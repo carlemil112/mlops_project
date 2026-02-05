@@ -1,0 +1,22 @@
+#macOS
+.DS_Store
+
+#Python
+__pycache__/
+*.pyd
+*.pyo
+
+#Virtual environments
+.venv/
+venv/
+.env/
+
+#Jupyter
+.ipynb_checkpoints/
+
+#IDE
+.vscode/
+.idea/
+
+#Logs/cache
+*.log
