@@ -1,0 +1,6 @@
+outs:
+- md5: 2084308e96231582f0ded9047561fb87.dir
+  size: 53102689
+  nfiles: 5000
+  hash: md5
+  path: places_365
