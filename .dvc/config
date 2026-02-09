@@ -2,7 +2,7 @@
     remote = minio
 ['remote "minio"']
     url = s3://rasmil112
-    endpointurl = http://172.24.198.42:9001/browser/rasmil112/data%2F
+    endpointurl = http://172.24.198.42:9000
     access_key_id = daki
     secret_access_key = dakiminio
     use_ssl = false
