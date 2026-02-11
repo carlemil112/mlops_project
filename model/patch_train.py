@@ -14,34 +14,45 @@ import wandb
 import hydra
 from omegaconf import DictConfig, OmegaConf
 
+
 @hydra.main(version_base=None, config_path="conf", config_name="config")
-
-
-def create_checkpoint(epoch, model, disc, optimizer_G, optimizer_D, scheduler, loss, val_loss, run_id, path):
-    """ creating a checkpoint """
+def create_checkpoint(
+    epoch,
+    model,
+    disc,
+    optimizer_G,
+    optimizer_D,
+    scheduler,
+    loss,
+    val_loss,
+    run_id,
+    path,
+):
+    """creating a checkpoint"""
     torch.save(
         {
-            'epoch': epoch,
-            'gen_state_dict': model.state_dict(),
-            'disc_state_dict': disc.state_dict(),
-            'optimizer_G_state_dict': optimizer_G.state_dict(),
-            'optimizer_D_state_dict': optimizer_D.state_dict(),
-            'scheduler_state_dict': scheduler.state_dict(),
+            "epoch": epoch,
+            "gen_state_dict": model.state_dict(),
+            "disc_state_dict": disc.state_dict(),
+            "optimizer_G_state_dict": optimizer_G.state_dict(),
+            "optimizer_D_state_dict": optimizer_D.state_dict(),
+            "scheduler_state_dict": scheduler.state_dict(),
             "loss": loss,
             "val_loss": val_loss,
             "run_id": run_id,
         },
-        path
+        path,
     )
 
 
 def load_checkpoint(path, model, disc, optimizer_G, optimizer_D, scheduler):
-    """ loading a checkpoint """
+    """loading a checkpoint"""
     checkpoint = torch.load(path, weights_only=False)
 
     def strip_module(sd):
         # if keys start with "module.", remove that prefix
         from collections import OrderedDict
+
         new_sd = OrderedDict()
         for k, v in sd.items():
             new_k = k.replace("module.", "")
@@ -73,16 +84,25 @@ def load_checkpoint(path, model, disc, optimizer_G, optimizer_D, scheduler):
     val_loss = checkpoint["val_loss"]
     run_id = checkpoint["run_id"]
 
-    return model, disc, optimizer_G, optimizer_D, scheduler, epoch, loss, val_loss, run_id
-
+    return (
+        model,
+        disc,
+        optimizer_G,
+        optimizer_D,
+        scheduler,
+        epoch,
+        loss,
+        val_loss,
+        run_id,
+    )
 
 
 # Training method for discriminator and generator. Setup is based on pix2pix.
-# 
+#
 def train(model, disc, device, optimizer_G, optimizer_D, train_loader, epoch):
-    """ training loop with unet and patchgan """
+    """training loop with unet and patchgan"""
     model.train()  # unet generator
-    disc.train()   # patchGAN discriminator
+    disc.train()  # patchGAN discriminator
 
     # adversarial loss for patchgan (outputs with sigmoid in discriminator)
     adv_criterion = nn.BCELoss()
@@ -107,7 +127,7 @@ def train(model, disc, device, optimizer_G, optimizer_D, train_loader, epoch):
 
         # concatenate grayscale and color along channel dim
         # real pics (gray and color)
-        real_pair = torch.cat([x, y], dim=1)   # B, 4, H, W
+        real_pair = torch.cat([x, y], dim=1)  # B, 4, H, W
         # fake pics (gray and fake color)
         fake_pair = torch.cat([x, fake_y], dim=1)  # B, 4, H, W
 
@@ -156,19 +176,21 @@ def train(model, disc, device, optimizer_G, optimizer_D, train_loader, epoch):
                 "Train epoch: %s , iteration: %s , G loss: %.4f , D loss: %.4f"
                 % (epoch, i, g_loss.item(), d_loss.item())
             )
-            wandb.log({
-                "train G total loss": g_loss.item(),
-                "train G adv loss(how much d catches fake)": g_adv_loss.item(),
-                "train G L1 loss (weighted)": g_l1_loss.item(),
-                "train G L1 loss raw": raw_l1.item(),
-                "train D loss": d_loss.item()
-            })
+            wandb.log(
+                {
+                    "train G total loss": g_loss.item(),
+                    "train G adv loss(how much d catches fake)": g_adv_loss.item(),
+                    "train G L1 loss (weighted)": g_l1_loss.item(),
+                    "train G L1 loss raw": raw_l1.item(),
+                    "train D loss": d_loss.item(),
+                }
+            )
 
     return last_g_loss
 
 
 def val(model, device, val_loader):
-    """ validation loop """
+    """validation loop"""
     model.eval()
     lossfunction = nn.L1Loss()
     total_loss = 0
@@ -197,14 +219,10 @@ def save_test_image(pred_tensor, target_tensor, epoch):
     out_dir = "test_output_images/rasmus_places_cropped"
     os.makedirs(out_dir, exist_ok=True)  # ensure folder exists
 
-    pred_img = transforms.functional.to_pil_image(
-        pred_tensor[0].detach().cpu()
-    )
+    pred_img = transforms.functional.to_pil_image(pred_tensor[0].detach().cpu())
     pred_img.save(f"{out_dir}/pred_img{epoch}.jpg")
 
-    target_img = transforms.functional.to_pil_image(
-        target_tensor[0].detach().cpu()
-    )
+    target_img = transforms.functional.to_pil_image(target_tensor[0].detach().cpu())
     target_img.save(f"{out_dir}/target_img{epoch}.jpg")
 
 
@@ -214,8 +232,8 @@ def main(cfg: DictConfig):
     batch_size = cfg.train_batch_size
     learning_rate = cfg.learning_rate
     torch.manual_seed(cfg.seed)  # secure reproducibility
-    epoch = cfg.checkpoint_epoch # Checkpoint
-    loss = 0 # What do we even use this for
+    epoch = cfg.checkpoint_epoch  # Checkpoint
+    loss = 0  # What do we even use this for
     val_loss = cfg.initial_loss_value
 
     # start up wandb
@@ -260,16 +278,31 @@ def main(cfg: DictConfig):
 
     # define optimizers
     # optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=cfg.momentum, weight_decay=cfg.weight_decay)
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=cfg.weight_decay)
+    optimizer = optim.Adam(
+        model.parameters(), lr=learning_rate, weight_decay=cfg.weight_decay
+    )
     # these betas are good for a discriminator optimizer
-    optimizer_disc = optim.Adam(disc.parameters(), lr=learning_rate, betas=cfg.adam_betas)
+    optimizer_disc = optim.Adam(
+        disc.parameters(), lr=learning_rate, betas=cfg.adam_betas
+    )
 
-    scheduler = StepLR(optimizer, step_size=cfg.lr_scheduler_step_size, gamma=0.5)  # only for gen
-
+    scheduler = StepLR(
+        optimizer, step_size=cfg.lr_scheduler_step_size, gamma=0.5
+    )  # only for gen
 
     # Checkpoint loader. If checkpoint file is present, continue training from checkpoint file.
     if os.path.exists(checkpoint_path):
-        (model, disc, optimizer, optimizer_disc, scheduler, epoch, loss, val_loss, run_id) = load_checkpoint(
+        (
+            model,
+            disc,
+            optimizer,
+            optimizer_disc,
+            scheduler,
+            epoch,
+            loss,
+            val_loss,
+            run_id,
+        ) = load_checkpoint(
             checkpoint_path, model, disc, optimizer, optimizer_disc, scheduler
         )
         run = wandb.init(project="unet_places_cropped", id=run_id, resume="must")
@@ -284,7 +317,9 @@ def main(cfg: DictConfig):
         print("LR", current_lr)
         print("batch size", batch_size)
 
-        train_loss = train(model, disc, device, optimizer, optimizer_disc, train_loader, epoch)
+        train_loss = train(
+            model, disc, device, optimizer, optimizer_disc, train_loader, epoch
+        )
         new_val_loss = val(model, device, val_loader)
 
         wandb.log({"Epoch": epoch})
@@ -304,10 +339,12 @@ def main(cfg: DictConfig):
                 train_loss,
                 new_val_loss,
                 run_id,
-                checkpoint_path
+                checkpoint_path,
             )
             print("New checkpoint has been made")
-            val_loss = new_val_loss  # this wasnt in the original, we need to update this?
+            val_loss = (
+                new_val_loss  # this wasnt in the original, we need to update this?
+            )
 
         # Save a recreated image to show progress ever x epoch.
         if epoch % 2 == 0:
@@ -318,7 +355,11 @@ def main(cfg: DictConfig):
                 save_test_image(test_pred, y, epoch)
                 break
 
-    torch.save({"gen": model.state_dict(), "disc": disc.state_dict()}, "rasmus_cropped_unet_adam.pt")
+    torch.save(
+        {"gen": model.state_dict(), "disc": disc.state_dict()},
+        "rasmus_cropped_unet_adam.pt",
+    )
+
 
 if __name__ == "__main__":
     main()

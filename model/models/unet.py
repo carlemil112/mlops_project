@@ -6,19 +6,20 @@ import torch.nn.functional as F
 # double convolutional layers
 def double_conv(channels_in, channels_out):
     convs = nn.Sequential(
-        nn.Conv2d(channels_in, channels_out, kernel_size = 3, padding = 1),
+        nn.Conv2d(channels_in, channels_out, kernel_size=3, padding=1),
         nn.ReLU(inplace=True),
-        nn.Conv2d(channels_out, channels_out, kernel_size = 3, padding = 1),
-        nn.ReLU(inplace=True)
+        nn.Conv2d(channels_out, channels_out, kernel_size=3, padding=1),
+        nn.ReLU(inplace=True),
     )
     return convs
+
 
 class Unet(nn.Module):
     def __init__(self):
         super(Unet, self).__init__()
 
         # downsize height and width
-        self.pooling = nn.MaxPool2d(kernel_size = 2, stride = 2)
+        self.pooling = nn.MaxPool2d(kernel_size=2, stride=2)
 
         # down layers
         self.down_conv1 = double_conv(1, 64)
@@ -28,11 +29,11 @@ class Unet(nn.Module):
         self.down_conv5 = double_conv(512, 1024)
 
         # downsize number of layers
-        self.transp1 = nn.ConvTranspose2d(1024, 512, kernel_size = 2, stride = 2)
-        self.transp2 = nn.ConvTranspose2d(512, 256, kernel_size = 2, stride = 2)
-        self.transp3 = nn.ConvTranspose2d(256, 128, kernel_size = 2, stride = 2)
-        self.transp4 = nn.ConvTranspose2d(128, 64, kernel_size = 2, stride = 2)
-        
+        self.transp1 = nn.ConvTranspose2d(1024, 512, kernel_size=2, stride=2)
+        self.transp2 = nn.ConvTranspose2d(512, 256, kernel_size=2, stride=2)
+        self.transp3 = nn.ConvTranspose2d(256, 128, kernel_size=2, stride=2)
+        self.transp4 = nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2)
+
         # up layers, dobbelt inputchannels because of skip connections
         self.up_conv1 = double_conv(1024, 512)
         self.up_conv2 = double_conv(512, 256)
@@ -40,7 +41,7 @@ class Unet(nn.Module):
         self.up_conv4 = double_conv(128, 64)
 
         # Last layer
-        self.out = nn.Conv2d(64, 3, kernel_size = 1)
+        self.out = nn.Conv2d(64, 3, kernel_size=1)
 
     def forward(self, input):
         # down
@@ -67,7 +68,8 @@ class Unet(nn.Module):
         out = self.out(up8)
         return out
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     input_image = torch.rand((1, 1, 32, 32))
     print(input_image.size())
     model = Unet()
@@ -75,13 +77,7 @@ if __name__ == '__main__':
     total_params = sum(p.numel() for p in model.parameters())
     print(f"{total_params:,} total parameters.")
     total_trainable_params = sum(
-        p.numel() for p in model.parameters() if p.requires_grad)
+        p.numel() for p in model.parameters() if p.requires_grad
+    )
     print(f"{total_trainable_params:,} training parameters.")
     outputs = model(input_image)
-
-
-
-
-
-
-

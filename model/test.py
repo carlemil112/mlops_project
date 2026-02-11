@@ -6,9 +6,10 @@ from collections import OrderedDict
 from torch.optim.lr_scheduler import StepLR
 from models.discriminator import *
 
+
 def load_random(path, model):
-    """ loading a checkpoint """
-    checkpoint = torch.load(path, weights_only=False, map_location=torch.device('cpu'))
+    """loading a checkpoint"""
+    checkpoint = torch.load(path, weights_only=False, map_location=torch.device("cpu"))
     state_dict = checkpoint["model_state_dict"]
 
     # FROM CHATGBT
@@ -24,22 +25,25 @@ def load_random(path, model):
 
     return model, epoch, val_loss
 
+
 def load_pretrained(path, model):
-    """ loading a checkpoint """
-    checkpoint = torch.load(path, weights_only=False, map_location=torch.device('cpu'))
+    """loading a checkpoint"""
+    checkpoint = torch.load(path, weights_only=False, map_location=torch.device("cpu"))
     model.load_state_dict(checkpoint["model_state_dict"])
     epoch = checkpoint["epoch"]
     val_loss = checkpoint["val_loss"]
 
     return model, epoch, val_loss
 
+
 def load_patch(path, model):
-    """ loading a checkpoint """
-    checkpoint = torch.load(path, weights_only=False, map_location=torch.device('cpu'))
+    """loading a checkpoint"""
+    checkpoint = torch.load(path, weights_only=False, map_location=torch.device("cpu"))
 
     def strip_module(sd):
         # if keys start with "module.", remove that prefix
         from collections import OrderedDict
+
         new_sd = OrderedDict()
         for k, v in sd.items():
             new_k = k.replace("module.", "")
@@ -59,17 +63,18 @@ def load_patch(path, model):
 
     return model, epoch, val_loss
 
+
 def test(model, device, val_loader):
-    """ validation loop """
+    """validation loop"""
     model.eval()
     lossfunction = nn.L1Loss()
     total_loss = 0
     total_batch_size = 0
-    #psnr_metric = PSNR(data_range=1.0)
+    # psnr_metric = PSNR(data_range=1.0)
 
     with torch.no_grad():
         loss = 0
-        for batch, (x,y) in enumerate(val_loader):
+        for batch, (x, y) in enumerate(val_loader):
             if batch % 5000 == 0:
                 print(f"Progress: {batch}/328500")
             x = x.to(device)
@@ -86,6 +91,7 @@ def test(model, device, val_loader):
         print("MAE: ", loss, "\n")
     return loss
 
+
 def save_test_image(pred_tensor, target_tensor, i, model):
     pred_tensor = torch.clamp(pred_tensor, 0.0, 1.0)
     pred_img = transforms.functional.to_pil_image(pred_tensor[0].detach().cpu())
@@ -94,10 +100,11 @@ def save_test_image(pred_tensor, target_tensor, i, model):
     target_img = transforms.functional.to_pil_image(target_tensor[0].detach().cpu())
     target_img.save(f"test_output_images/{model}_y_img{i}.jpg")
 
+
 def main():
     # import model
     torch.manual_seed(42)
-    model_name = "patch_unet" # random_unet, pretrained_unet, patch_unet
+    model_name = "patch_unet"  # random_unet, pretrained_unet, patch_unet
     data_path = "data"
 
     if torch.cuda.is_available():
@@ -109,22 +116,30 @@ def main():
     else:
         device = torch.device("cpu")
         print("cpu")
-    
+
     if model_name == "random_unet":
         from models.unet import Unet as unet
+
         model = unet()
         checkpoint_path = "checkpoint/random_unet.tar"
         model = model.to(device)
         model, epoch, val_loss = load_random(checkpoint_path, model)
     elif model_name == "pretrained_unet":
-        model = torch.hub.load('milesial/Pytorch-UNet', 'unet_carvana', pretrained=False, scale=1)
-        model.inc.double_conv[0] = nn.Conv2d(1, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
-        model.outc.conv = nn.Conv2d(64, 3, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+        model = torch.hub.load(
+            "milesial/Pytorch-UNet", "unet_carvana", pretrained=False, scale=1
+        )
+        model.inc.double_conv[0] = nn.Conv2d(
+            1, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False
+        )
+        model.outc.conv = nn.Conv2d(
+            64, 3, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False
+        )
         checkpoint_path = "checkpoint/pretrained_unet.tar"
         model = model.to(device)
         model, epoch, val_loss = load_pretrained(checkpoint_path, model)
     elif model_name == "patch_unet":
         from models.unet import Unet as unet
+
         model = unet()
         checkpoint_path = "checkpoint/patch_unet.tar"
         model = model.to(device)
@@ -132,23 +147,25 @@ def main():
     else:
         print("Choose one of 3 models: random_unet, pretrained_unet, patch_unet")
 
-  
     print("checkpoint loaded")
     print(f"Checkpoint after {epoch}, with validation loss {val_loss}")
-    
+
     test_data = gray_color_data(data_path, split="test", train=False)
-    test_loader = torch.utils.data.DataLoader(test_data, batch_size=1, shuffle=False, num_workers=0)
+    test_loader = torch.utils.data.DataLoader(
+        test_data, batch_size=1, shuffle=False, num_workers=0
+    )
     print("data loaded")
-    #loss = test(model, device, test_loader)
-    #print(loss)
+    # loss = test(model, device, test_loader)
+    # print(loss)
 
     for i, (x, y) in enumerate(test_loader):
-                test_img = x.to(device)
-                model.eval()
-                test_pred = model(test_img)
-                save_test_image(test_pred, y, i, model_name)
-                if i > 10:
-                    break
+        test_img = x.to(device)
+        model.eval()
+        test_pred = model(test_img)
+        save_test_image(test_pred, y, i, model_name)
+        if i > 10:
+            break
+
 
 if __name__ == "__main__":
     main()
