@@ -11,6 +11,10 @@ from models.discriminator import Discriminator
 from data_loader import gray_color_data
 import os
 import wandb
+import hydra
+from omegaconf import DictConfig, OmegaConf
+
+@hydra.main(version_base=None, config_path="conf", config_name="config")
 
 
 def create_checkpoint(epoch, model, disc, optimizer_G, optimizer_D, scheduler, loss, val_loss, run_id, path):
@@ -72,11 +76,9 @@ def load_checkpoint(path, model, disc, optimizer_G, optimizer_D, scheduler):
     return model, disc, optimizer_G, optimizer_D, scheduler, epoch, loss, val_loss, run_id
 
 
-# Info om ændringer:
-# Har skiftet MSE ud med adv der bruger BCELoss.
-# l1 loss der fokusere på hvor godt generatoren laver billedet. 100 vægt da pix2pix har det
 
-
+# Training method for discriminator and generator. Setup is based on pix2pix.
+# 
 def train(model, disc, device, optimizer_G, optimizer_D, train_loader, epoch):
     """ training loop with unet and patchgan """
     model.train()  # unet generator
@@ -206,15 +208,15 @@ def save_test_image(pred_tensor, target_tensor, epoch):
     target_img.save(f"{out_dir}/target_img{epoch}.jpg")
 
 
-def main():
+def main(cfg: DictConfig):
     # setting up variables
-    number_epochs = 100
-    batch_size = 256
-    learning_rate = 1e-4
-    torch.manual_seed(42)  # secure reproducibility
-    epoch = 1
-    loss = 0
-    val_loss = 100000000
+    number_epochs = cfg.number_epochs
+    batch_size = cfg.train_batch_size
+    learning_rate = cfg.learning_rate
+    torch.manual_seed(cfg.seed)  # secure reproducibility
+    epoch = cfg.checkpoint_epoch # Checkpoint
+    loss = 0 # What do we even use this for
+    val_loss = cfg.initial_loss_value
 
     # start up wandb
     wandb.login()
@@ -257,13 +259,15 @@ def main():
     disc = disc.to(device)
 
     # define optimizers
-    # optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=0.0001)
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0.0001)
+    # optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=cfg.momentum, weight_decay=cfg.weight_decay)
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=cfg.weight_decay)
     # these betas are good for a discriminator optimizer
-    optimizer_disc = optim.Adam(disc.parameters(), lr=learning_rate, betas=(0.5, 0.999))
+    optimizer_disc = optim.Adam(disc.parameters(), lr=learning_rate, betas=cfg.adam_betas)
 
-    scheduler = StepLR(optimizer, step_size=int(5), gamma=0.5)  # only for gen
+    scheduler = StepLR(optimizer, step_size=cfg.lr_scheduler_step_size, gamma=0.5)  # only for gen
 
+
+    # Checkpoint loader. If checkpoint file is present, continue training from checkpoint file.
     if os.path.exists(checkpoint_path):
         (model, disc, optimizer, optimizer_disc, scheduler, epoch, loss, val_loss, run_id) = load_checkpoint(
             checkpoint_path, model, disc, optimizer, optimizer_disc, scheduler
@@ -305,7 +309,7 @@ def main():
             print("New checkpoint has been made")
             val_loss = new_val_loss  # this wasnt in the original, we need to update this?
 
-        # saving one image to check progress
+        # Save a recreated image to show progress ever x epoch.
         if epoch % 2 == 0:
             for x, y in val_loader:
                 test_img = x.to(device)

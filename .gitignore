@@ -20,3 +20,6 @@ venv/
 
 #Logs/cache
 *.log
+
+#Dataset
+data/
