@@ -23,3 +23,6 @@ venv/
 
 #Dataset
 data/
+
+# DVC
+.dvc/cache

@@ -1,0 +1,3 @@
+['remote "minio"']
+    access_key_id = daki
+    secret_access_key = dakiminio
