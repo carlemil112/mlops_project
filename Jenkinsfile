@@ -1,26 +1,37 @@
 pipeline {
     agent any
 
-    stages {
+    options {
+        timestamps()
+        // For avoiding double checkout
+        skipDefaultCheckout()
+    }
 
+    stages {
         stage('Checkout') {
             steps {
                 checkout scm
             }
         }
-
-        stage('Install Dependencies') {
+        // opbygning af docker image
+        stage('Build Docker Image') {
             steps {
-                sh 'python3 -m venv venv'
-                sh 'venv/bin/pip install --upgrade pip'
-                sh 'venv/bin/pip install -r requirements.txt'
+                sh 'docker --version'
+                sh 'docker build -t mlops_project_tests:${BUILD_NUMBER} .'
             }
         }
 
-        stage('Run Tests') {
+        stage('Run Unit Tests (pytest)') {
             steps {
-                sh 'venv/bin/pytest'
+                sh 'docker run --rm mlops_project_tests:${BUILD_NUMBER} python -m pytest -q'
             }
+        }
+    }
+
+    post {
+        always {
+            // cleanup
+            sh 'docker image rm -f mlops_project_tests:${BUILD_NUMBER} || true'
         }
     }
 }
