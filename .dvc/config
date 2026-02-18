@@ -1,8 +1,11 @@
 [core]
     remote = minio
 ['remote "minio"']
+<<<<<<< HEAD
     url = s3://rasmil112
     endpointurl = http://172.24.198.42:9000
-    access_key_id = daki
-    secret_access_key = dakiminio
     use_ssl = false
+=======
+    url = s3://rasmil112/data
+    endpointurl = http://172.24.198.42:9001
+>>>>>>> 2587cb8 (Added shard folder in /data with .tar files of dataset)
