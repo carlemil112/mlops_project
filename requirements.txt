@@ -4,3 +4,5 @@ omegaconf==2.3.0
 dvc
 pytest
 torch
+torchvision
+mlflow==2.14.3
