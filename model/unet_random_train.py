@@ -1,14 +1,15 @@
 import torch
 from torch import nn
 from torch import optim
-from torchvision import datasets
-from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 from models.unet import Unet as unet
 from data_loader import gray_color_data
 import os
 
 import wandb
+
+# MLFlow import
+import mlflow
 
 
 def create_checkpoint(epoch, model, optimizer, loss, val_loss, run_id, path):
@@ -61,6 +62,9 @@ def train(model, device, optimizer, train_loader, epoch):
                 % (epoch, i, loss.item())
             )
             wandb.log({"Train loss": loss.item()})
+            # MLFlow loss tracking
+            mlflow.log_metric("train/mse", loss.item(), step=epoch)
+
     return loss.item
 
 
@@ -87,6 +91,9 @@ def val(model, device, val_loader):
         loss = total_loss / total_batch_size
         print("\nVal MAE: ", loss, "\n")
         wandb.log({"Val mae": loss})
+        # MLFlow val metric
+        mlflow.log_metric("val/mae", loss)
+
     return total_loss
 
 
@@ -106,6 +113,21 @@ def main():
     epoch = 1
     loss = 0
     val_loss = 100000000
+
+    # MLFlow track hyperparameters
+    mlflow.set_experiment("recolorization-gan")
+
+    with mlflow.start_run(run_name="unet_random_train"):
+        mlflow.log_params(
+            {
+                "number_epochs": number_epochs,
+                "batch_size": batch_size,
+                "learning_rate": learning_rate,
+                "seed": 42,
+                "checkpoint_path": "checkpoint/random_unet.tar",
+                "data_path": "data",
+            }
+        )
 
     # start up wandb
     wandb.login()
@@ -183,6 +205,11 @@ def main():
                 test_pred = model(test_img)
                 save_test_image(test_pred, y, epoch)
                 break
+
+        if os.path.exists("checkpoint"):
+            mlflow.log_artifacts("checkpoint", artifact_path="checkpoints")
+        if os.path.exists("test_output_images"):
+            mlflow.log_artifacts("test_output_images", artifact_path="samples")
 
 
 if __name__ == "__main__":

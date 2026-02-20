@@ -2,9 +2,6 @@ import torch
 from torch import nn
 from torch import optim
 from torch.optim.lr_scheduler import StepLR
-import torchvision
-from torchvision import datasets
-from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 from models.unet import Unet as unet
 from models.discriminator import Discriminator
@@ -12,7 +9,12 @@ from data_loader import gray_color_data
 import os
 import wandb
 import hydra
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig
+
+# MLFlow logic
+import mlflow
+
+mlflow.set_experiment("Patch Train")
 
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
@@ -186,6 +188,18 @@ def train(model, disc, device, optimizer_G, optimizer_D, train_loader, epoch):
                 }
             )
 
+            # MLFlow track training metrics
+            mlflow.log_metrics(
+                {
+                    "train/g_total": g_loss.item(),
+                    "train/g_adv": g_adv_loss.item(),
+                    "train/g_l1_weighted": g_l1_loss.item(),
+                    "train/g_l1_raw": raw_l1.item(),
+                    "train/d_loss": d_loss.item(),
+                },
+                step=epoch,
+            )
+
     return last_g_loss
 
 
@@ -212,6 +226,9 @@ def val(model, device, val_loader):
 
     print("\nVal L1: ", loss, "\n")
     wandb.log({"Val L1": loss})
+    # MLFlow logging of val metric
+    mlflow.log_metric("val/l1", loss)
+
     return loss
 
 
@@ -235,6 +252,22 @@ def main(cfg: DictConfig):
     epoch = cfg.checkpoint_epoch  # Checkpoint
     loss = 0  # What do we even use this for
     val_loss = cfg.initial_loss_value
+
+    # MLFlow SETUP
+    mlflow.set_experiment("recolorization-gan")
+
+    with mlflow.start_run(run_name="patch_train"):
+        mlflow.log_params(
+            {
+                "number_epochs": number_epochs,
+                "batch_size": batch_size,
+                "learning_rate": learning_rate,
+                "seed": cfg.seed,
+                "checkpoint_epoch": epoch,
+                "checkpoint_path": "checkpoint/patch_unet.tar",
+                "data_path": "data/",
+            }
+        )
 
     # start up wandb
     wandb.login()
@@ -359,6 +392,12 @@ def main(cfg: DictConfig):
         {"gen": model.state_dict(), "disc": disc.state_dict()},
         "rasmus_cropped_unet_adam.pt",
     )
+
+    # Save artifacts with MLFlow - checkpoints + sample output images
+    if os.path.exists("checkpoint"):
+        mlflow.log_artifacts("checkpoint", artifact_path="checkpoints")
+    if os.path.exists("test_output_images"):
+        mlflow.log_artifacts("test_output_images", artifact_path="samples")
 
 
 if __name__ == "__main__":
