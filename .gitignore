@@ -27,3 +27,4 @@ data/
 # DVC
 .dvc/cache
 .dvc/config.local
+/data
