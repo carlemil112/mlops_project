@@ -6,3 +6,4 @@ pytest
 torch
 torchvision
 mlflow==2.14.3
+dvc-s3
