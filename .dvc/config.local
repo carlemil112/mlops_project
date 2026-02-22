@@ -1,4 +1,0 @@
-['remote "minio"']
-    access_key_id = daki
-    secret_access_key = dakiminio
-    endpointurl = http://172.24.198.42:9000
