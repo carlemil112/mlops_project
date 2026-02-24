@@ -17,7 +17,7 @@ import mlflow
 mlflow.set_experiment("Patch Train")
 
 
-@hydra.main(version_base=None, config_path="conf", config_name="config")
+@hydra.main(version_base=None, config_path=".", config_name="train_config")
 def create_checkpoint(
     epoch,
     model,
@@ -100,7 +100,6 @@ def load_checkpoint(path, model, disc, optimizer_G, optimizer_D, scheduler):
 
 
 # Training method for discriminator and generator. Setup is based on pix2pix.
-#
 def train(model, disc, device, optimizer_G, optimizer_D, train_loader, epoch):
     """training loop with unet and patchgan"""
     model.train()  # unet generator

@@ -1,0 +1,30 @@
+# Paths
+data_path: "data"
+checkpoint_path: "checkpoint/random_unet.tar"
+output_path: "test_output_images"
+
+# Dataset/splits
+train_split: "train-standard"
+val_split: "val"
+
+# Dataloader
+train_batch_size: 512
+val_batch_size: 1
+train_shuffle: true
+val_shuffle: false
+num_workers: 16
+
+# Seed and Device
+seed: 42
+device: "auto"
+
+
+# Losses
+train_loss: "mse"
+val_loss: "l1"
+
+
+# Optimizer
+optimizer: "sgd"
+momentum: 0.9
+weight_decay: 0.0001
