@@ -22,7 +22,7 @@ venv/
 *.log
 
 #Dataset
-data/
+FER-2013
 
 # DVC
 .dvc/cache
