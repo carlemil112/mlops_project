@@ -1,3 +1,4 @@
+import os
 import matplotlib.pyplot as plt
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import (
@@ -12,6 +13,19 @@ from tensorflow.keras.layers import (
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLROnPlateau
+import mlflow
+import mlflow.keras
+
+#MLFlow configuration
+tracking_uri = os.getenv("MLFLOW_TRACKING_URI")
+if tracking_uri:
+    mlflow.set_tracking_uri(tracking_uri)
+
+
+mlflow.set_experiment(os.getenv("MLFLOW_EXPERIMENT_NAME", "MLFlow FER tracking"))
+# Save model runs for lineage
+mlflow.keras.autolog(log_models=True)
+
 
 # Konfiguration og parametre
 TRAIN_DIR = "FER-2013/train_balanced"  # Balanceret data
@@ -69,6 +83,27 @@ validation_generator = datagen.flow_from_directory(
     shuffle=False,
 )
 
+with mlflow.start_run() as run:
+    mlflow.set_tags({
+        "git.commit": os.getenv("GIT_COMMIT", ""),
+        "git.branch": os.getenv("GIT_BRANCH", ""),
+        "jenkins.job": os.getenv("JOB_NAME", ""),
+        "jenkins.build_number": os.getenv("BUILD_NUMBER", ""),
+        "jenkins.build_url": os.getenv("BUILD_URL", ""),
+        "data.version": os.getenv("DATA_VERSION", ""),
+    })
+
+    mlflow.log_params({
+        "train_dir": TRAIN_DIR,
+        "img_size": IMG_SIZE,
+        "batch_size": BATCH_SIZE,
+        "epochs_max": EPOCHS,
+        "dataset_mean": DATASET_MEAN,
+        "dataset_std": DATASET_STD,
+    })
+
+  
+
 # Model-arkitektur (CNN)
 # Lag på lag (sekventiel)
 model = Sequential()
@@ -118,8 +153,13 @@ model.summary()
 # Træning
 # Callbacks: funktioner der kører under træning i model.fit
 # Find og gem bedste model
-checkpoint = ModelCheckpoint(
-    "best_emotion_model.keras",
+#OUTPUTS MADE RUN-SPECIFIC
+out_dir = os.path.join("outputs", run.info.run_id)
+os.makedirs(out_dir, exist_ok=True)
+
+best_model_path = os.path.join(out_dir, "best_emotion_model.keras")
+
+checkpoint = ModelCheckpoint(best_model_path,
     monitor="val_accuracy",
     save_best_only=True,
     mode="max",
@@ -158,7 +198,7 @@ history = model.fit(
 
 
 # Resultater visualisering
-def plot_training_history(history):
+def plot_training_history(history, plotpath):
     acc = history.history["accuracy"]
     val_acc = history.history["val_accuracy"]
     loss = history.history["loss"]
@@ -181,8 +221,11 @@ def plot_training_history(history):
     plt.legend(loc="upper right")
     plt.title("Training vs Validation Loss")
 
-    plt.savefig("training_results.png")
+    plt.savefig(history, plot_path,)
 
+# Plots + best model in MLFLow
+plot_path = os.path.join(out_dir, "training_results.png")
+plot_training_history(history, plot_path)
 
-plot_training_history(history)
-print("Træning færdig. Bedste model er gemt som 'best_emotion_model.keras'")
+mlflow.log_artifact(plot_path, artifact_path="plots")
+mlflow.log_artifact(best_model_path, artifact_path="checkpoints")
