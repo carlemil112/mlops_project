@@ -10,6 +10,7 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
+                echo "Pulling repo from ${GIT_URL}..."
                 checkout scm
             }
         }
@@ -17,13 +18,13 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 sh 'docker --version'
-                sh 'docker build -t mlops_project_tests:${BUILD_NUMBER} .'
+                sh "docker build -t mlops_project_tests:${BUILD_NUMBER} ."
             }
         }
 
         stage('Run Unit Tests (pytest)') {
             steps {
-                sh 'docker run --rm mlops_project_tests:${BUILD_NUMBER} python -m pytest -q'
+                sh "docker run --rm mlops_project_tests:${BUILD_NUMBER} python -m pytest -q"
             }
         }
     }
@@ -31,7 +32,7 @@ pipeline {
     post {
         always {
             // cleanup
-            sh 'docker image rm -f mlops_project_tests:${BUILD_NUMBER} || true'
+            sh "docker image rm -f mlops_project_tests:${BUILD_NUMBER} || true"
         }
     }
 }
