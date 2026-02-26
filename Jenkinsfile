@@ -10,7 +10,7 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                echo "Pulling repo from ${GIT_URL}..."
+                echo "Pulling repo from ${BRANCH_NAME}..."
                 checkout scm
             }
         }
