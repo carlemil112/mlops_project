@@ -12,6 +12,7 @@ pipeline {
             steps {
                 echo "Using branch: ${env.BRANCH_NAME ?: env.GIT_BRANCH ?: 'unknown'}"
                 checkout scm
+                sh 'git rev-parse --short HEAD'
             }
         }
 
@@ -19,10 +20,11 @@ pipeline {
         // opbygning af docker image
         stage('Build Docker Image') {
             steps {
-                echo "Building docker image from SHA: ${env.GIT_COMMIT}"
 
                 sh '''
                     docker --version
+                    GIT_COMMIT=$(git rev-parse HEAD)
+                    echo "Building docker image from SHA: $GIT_COMMIT"
                     echo "Cutting SHA to short..."
                     SHORT_SHA=$(echo "$GIT_COMMIT" | cut -c1-7)
                     echo "Short SHA: $SHORT_SHA"
@@ -46,6 +48,7 @@ pipeline {
         always {
             // cleanup
             sh '''
+                GIT_COMMIT=$(git rev-parse HEAD)
                 SHORT_SHA=$(echo "$GIT_COMMIT" | cut -c1-7)
                 docker image rm -f mlops_project_tests:$BUILD_NUMBER mlops_project_tests:$SHORT_SHA || true
 
