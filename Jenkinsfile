@@ -14,6 +14,8 @@ pipeline {
                 checkout scm
             }
         }
+
+
         // opbygning af docker image
         stage('Build Docker Image') {
             steps {
@@ -36,4 +38,3 @@ pipeline {
         }
     }
 }
-f
