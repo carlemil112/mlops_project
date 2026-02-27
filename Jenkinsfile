@@ -8,6 +8,13 @@ pipeline {
     }
 
     stages {
+        stage('Clean Workspace') {
+            steps {
+                cleanWs()
+                checkout scm
+
+            }
+        }
         stage('Checkout') {
             steps {
                 echo "Using branch: ${env.BRANCH_NAME ?: env.GIT_BRANCH ?: 'unknown'}"
@@ -41,6 +48,28 @@ pipeline {
             steps {
                 sh 'docker run --rm mlops_project_tests:$BUILD_NUMBER python -m pytest -q'
             }
+        }
+
+        stage('Pull Data with DVC'){
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsID: 'minio_ass',
+                    usernameVariable: 'AWS_ACCESS_KEY_ID',
+                    passwordVariable: 'AWS_SECRET_ACCESS_KEY' // pragma: allowlist secret
+                    )]) {
+                sh '''
+                    docker run --rm \
+                    -e AWS_ACCESS_KEY_ID \
+                    -e AWS_SECRET_ACCESS_KEY \
+                    -v "$PWD:/app" \
+                    -w /app \
+                    mlops_project_tests:$BUILD_NUMBER \
+                    dvc pull -v
+                '''
+            }
+
+
+
         }
     }
 
