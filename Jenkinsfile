@@ -53,7 +53,7 @@ pipeline {
         stage('Pull Data with DVC'){
             steps {
                 withCredentials([usernamePassword(
-                    credentialsID: 'minio_ass',
+                    credentialsId: 'minio_ass',
                     usernameVariable: 'AWS_ACCESS_KEY_ID',
                     passwordVariable: 'AWS_SECRET_ACCESS_KEY' // pragma: allowlist secret
                     )]) {
