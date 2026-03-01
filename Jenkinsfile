@@ -72,17 +72,18 @@ pipeline {
 
         }
     }
-
-    post {
-        always {
+    stage('Cleanup'){
+        post {
+            always {
             // cleanup
-            sh '''
-                GIT_COMMIT=$(git rev-parse HEAD)
-                SHORT_SHA=$(echo "$GIT_COMMIT" | cut -c1-7)
-                docker image rm -f mlops_project_tests:$BUILD_NUMBER mlops_project_tests:$SHORT_SHA || true
+                sh '''
+                    GIT_COMMIT=$(git rev-parse HEAD)
+                    SHORT_SHA=$(echo "$GIT_COMMIT" | cut -c1-7)
+                    docker image rm -f mlops_project_tests:$BUILD_NUMBER mlops_project_tests:$SHORT_SHA || true
 
-            '''
+                '''
         }
     }
+}
 }
 }
