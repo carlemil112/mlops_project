@@ -6,7 +6,9 @@ pipeline {
         // For avoiding double checkout
         skipDefaultCheckout()
     }
-
+parameters {
+  booleanParam(name: 'RUN_TRAINING', defaultValue: false, description: 'Run training stage?')
+}
     stages {
         stage('Clean Workspace') {
             steps {
@@ -67,10 +69,25 @@ pipeline {
                     dvc pull -v
                 '''
             }
-
-
-
+            }
         }
+        stage('Training of model'){
+            when { expression { return params.RUN_TRAINING } }
+            steps {
+                sh '''
+                mkdir -p outputs
+                docker run --rm -v "$PWD:/app" -w /app mlops_project_tests:$BUILD_NUMBER \
+                python train_smoke.py --out outputs
+
+                '''
+            }
+
+
+    post {
+        always {
+            archiveArtifacts artifacts: 'outputs/**', fingerprint: true, allowEmptyArchive: true
+            }
+    }
     }
     stage('Cleanup'){
         steps {
