@@ -73,7 +73,7 @@ pipeline {
         }
     }
     stage('Cleanup'){
-        post {
+        steps {
             always {
             // cleanup
                 sh '''
