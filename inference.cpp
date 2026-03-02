@@ -29,11 +29,17 @@ cv::Mat preprocessImage(std::string imagePath){
 }
 
 void runInference(std:: string modelPath, cv::Mat image){
+    // Load model and create interpreter
     auto model = tflite ::FLatBufferModel::BuildFromFile(modelPath.c_str());
     tflite::ops::builtin::BuiltinOpResolver resolver;
     std::unique_ptr<tflite::Interpreter> interpreter;
     tflite::InterpreterBuilder(*model, resolver)(&interpreter);
     interpreter->AllocateTensors();
     std::cout << "Running inference" << std::endl;
+    
+    // Copy pixels into input buffer:
+    float* input = interpreter->typed_input_tensor<float>(0);
+    float* imageData = (float*)image.data;
+    memcpy(input, imageData, 48 * 48 * sizeof(float));
 }
 
