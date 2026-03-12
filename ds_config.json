@@ -1,0 +1,13 @@
+{
+  "train_batch_size": 64,
+  "gradient_accumulation_steps": 1,
+  "zero_optimization": {
+    "stage": 2 
+  },
+  "optimizer": {
+    "type": "Adam",
+    "params": {
+      "lr": 0.001
+    }
+  }
+}

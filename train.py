@@ -1,231 +1,342 @@
 import os
 import matplotlib.pyplot as plt
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import (
-    Conv2D,
-    MaxPooling2D,
-    Dense,
-    Flatten,
-    Dropout,
-    BatchNormalization,
-    Input,
-)
-from tensorflow.keras.preprocessing.image import ImageDataGenerator
-from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLROnPlateau
-import mlflow
-import mlflow.keras
+from PIL import Image
 
-#MLFlow configuration
+import torch
+import torch.nn as nn
+from torch.utils.data import Dataset, DataLoader
+from torchvision import transforms
+from torch.optim import Adam
+from torch.optim.lr_scheduler import ReduceLROnPlateau
+
+# to start training with deepspeed: deepspeed --num_gpus=2 train_pytorch.py
+# Watch VRAM while it runs with: watch -n 1 nvidia-smi
+import deepspeed
+
+import mlflow
+import mlflow.pytorch
+import argparse
+
+parser = argparse.ArgumentParser()
+parser = deepspeed.add_config_arguments(parser)
+args = parser.parse_args()
+
+# MLFlow configuration
 tracking_uri = os.getenv("MLFLOW_TRACKING_URI")
 if tracking_uri:
     mlflow.set_tracking_uri(tracking_uri)
 
-
 mlflow.set_experiment(os.getenv("MLFLOW_EXPERIMENT_NAME", "MLFlow FER tracking"))
-# Save model runs for lineage
-mlflow.keras.autolog(log_models=True)
 
+# Configuration and parameters
+TRAIN_DIR = "FER-2013/train_balanced"  # Balanced data
+IMG_SIZE = 48                          # Standard size image
+BATCH_SIZE = 64                        # Amount if images pr. batch
+EPOCHS = 50                            
 
-# Konfiguration og parametre
-TRAIN_DIR = "FER-2013/train_balanced"  # Balanceret data
-IMG_SIZE = 48  # Standard størrelse billede
-BATCH_SIZE = 64  # Antal billeder per batch
-EPOCHS = 50  # Maksimalt antal gennemløb
-
-# Brug de nye mean og std pixel-værdier fra dataset_analysis (placeholder [0.5, 0.25])
+# mean and std values from data analysis
 DATASET_MEAN = 0.5147
-DATASET_STD = 0.2536
+DATASET_STD  = 0.2536
 
 
-def custom_preprocessing(img):
-    """
-    Denne funktion kører på hvert eneste billede før det rammer modellen.
-    Den normaliserer pixel-værdierne baseret på hele datasættet.
-    """
-    # 1. Skaler fra [0, 255] til [0, 1]
-    img = img / 255.0
+# Dataset
+class FERDataset(Dataset):
+    def __init__(self, root_dir, transform=None):
+        self.samples = []
+        self.transform = transform
 
-    # 2. Standardisering: (pixel - gennemsnit) / standardafvigelse
-    # Dette centrerer data omkring 0, hvilket hjælper modellen med at lære hurtigere.
-    img = (img - DATASET_MEAN) / DATASET_STD
-    return img
+        # Finds all subfolders (happy, sad, etc)
+        classes = sorted(os.listdir(root_dir))
+        self.class_to_idx = {c: i for i, c in enumerate(classes)}
+        self.num_classes = len(classes)
+
+        for cls in classes:
+            cls_path = os.path.join(root_dir, cls)
+            if not os.path.isdir(cls_path):
+                continue
+            for fname in os.listdir(cls_path):
+                if fname.lower().endswith((".png", ".jpg", ".jpeg")):
+                    self.samples.append(
+                        (os.path.join(cls_path, fname), self.class_to_idx[cls])
+                    )
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, idx):
+        path, label = self.samples[idx]
+
+        img = Image.open(path).convert("L")
+        if self.transform:
+            img = self.transform(img)
+        return img, label
 
 
-# Data generators
+
+# Transforms
+# This function runs on every image hitting the model
+transform = transforms.Compose([
+    transforms.Resize((IMG_SIZE, IMG_SIZE)),           # target_size=(IMG_SIZE, IMG_SIZE)
+    transforms.ToTensor(),                             # [0,255] → [0.0, 1.0] + tensor
+    transforms.Normalize(mean=[DATASET_MEAN],          # (pixel - mean) / std
+                         std=[DATASET_STD]),
+])
+
+
+# Data split + DataLoader
 print("Opsætter data generators...")
 
-# Vi bruger ImageDataGenerator til at streame billeder fra disken
-datagen = ImageDataGenerator(
-    preprocessing_function=custom_preprocessing,  # Vores custom normalisering
-    validation_split=0.2,  # 20% data til validation
+full_dataset = FERDataset(TRAIN_DIR, transform=transform)
+
+# Svarer til validation_split=0.2
+val_size   = int(0.2 * len(full_dataset))
+train_size = len(full_dataset) - val_size
+train_dataset, val_dataset = torch.utils.data.random_split(
+    full_dataset, [train_size, val_size],
+    generator=torch.Generator().manual_seed(42),  # Reproducible split
 )
 
-# Generator til træningsdata
-train_generator = datagen.flow_from_directory(
-    TRAIN_DIR,
-    target_size=(IMG_SIZE, IMG_SIZE),
+# Generator for train data
+train_loader = DataLoader(
+    train_dataset,
     batch_size=BATCH_SIZE,
-    color_mode="grayscale",  # Sikrer at vi kun bruger 1 kanal for sort/hvid billeder
-    class_mode="categorical",
-    subset="training",
     shuffle=True,
+    num_workers=4,
+    pin_memory=True,
 )
 
-# Generator til Valideringsdata
-validation_generator = datagen.flow_from_directory(
-    TRAIN_DIR,
-    target_size=(IMG_SIZE, IMG_SIZE),
+# Generator for val data
+val_loader = DataLoader(
+    val_dataset,
     batch_size=BATCH_SIZE,
-    color_mode="grayscale",
-    class_mode="categorical",
-    subset="validation",
     shuffle=False,
+    num_workers=4,
+    pin_memory=True,
 )
 
-with mlflow.start_run() as run:
-    mlflow.set_tags({
-        "git.commit": os.getenv("GIT_COMMIT", ""),
-        "git.branch": os.getenv("GIT_BRANCH", ""),
-        "jenkins.job": os.getenv("JOB_NAME", ""),
-        "jenkins.build_number": os.getenv("BUILD_NUMBER", ""),
-        "jenkins.build_url": os.getenv("BUILD_URL", ""),
-        "data.version": os.getenv("DATA_VERSION", ""),
-    })
-
-    mlflow.log_params({
-        "train_dir": TRAIN_DIR,
-        "img_size": IMG_SIZE,
-        "batch_size": BATCH_SIZE,
-        "epochs_max": EPOCHS,
-        "dataset_mean": DATASET_MEAN,
-        "dataset_std": DATASET_STD,
-    })
-
-  
 
 # Model-arkitektur (CNN)
-# Lag på lag (sekventiel)
-model = Sequential()
+class FERModel(nn.Module):
+    def __init__(self, num_classes):
+        super().__init__()
 
-# Input lag (definerer formen: 48x48x1)
-model.add(Input(shape=(IMG_SIZE, IMG_SIZE, 1)))
+        # Conv2D: finder simple features (kanter, linjer)
+        # BatchNormalization: stabiliserer læringen
+        # MaxPooling: gør billedet mindre (halverer størrelsen) for at reducere beregninger
+        self.block1 = nn.Sequential(
+            nn.Conv2d(1, 64, kernel_size=3, padding=1),   # 1 kanal ind (grayscale), 64 filtre ud
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(64, 64, kernel_size=3, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(2, 2),
+            nn.Dropout2d(0.4),  # Slukker tilfældige neuroner for at hjælpe med at forhindre overfitting
+        )
 
-# Conv2D: finder simple features (kanter, linjer)
-# BatchNormalization: stabiliserer læringen
-# MaxPooling: gør billedet mindre (halverer størrelsen) for at reducere beregninger
-model.add(Conv2D(64, kernel_size=(3, 3), activation="relu", padding="same"))
-model.add(BatchNormalization())
-model.add(Conv2D(64, kernel_size=(3, 3), activation="relu", padding="same"))
-model.add(BatchNormalization())
-model.add(MaxPooling2D(pool_size=(2, 2)))
-model.add(
-    Dropout(0.4)
-)  # Slukker tilfældige neuroner for at hjællpe med at forhindre overfitting
+        # Dybden øges (128 filtre) for at finde mere komplekse mønstre (former, øjne)
+        self.block2 = nn.Sequential(
+            nn.Conv2d(64, 128, kernel_size=3, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(128, 128, kernel_size=3, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(2, 2),
+            nn.Dropout2d(0.4),
+        )
 
-# Dybden øges (128 filtre) for at finde mere komplekse mønstre (former, øjne)(samme opbygning)
-model.add(Conv2D(128, kernel_size=(3, 3), activation="relu", padding="same"))
-model.add(BatchNormalization())
-model.add(Conv2D(128, kernel_size=(3, 3), activation="relu", padding="same"))
-model.add(BatchNormalization())
-model.add(MaxPooling2D(pool_size=(2, 2)))
-model.add(Dropout(0.4))
+        # Dybden øges igen (128 filtre)
+        self.block3 = nn.Sequential(
+            nn.Conv2d(128, 128, kernel_size=3, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(2, 2),
+            nn.Dropout2d(0.4),
+        )
 
-# Dybden øges igen (156 filtre)
-model.add(Conv2D(128, kernel_size=(3, 3), activation="relu", padding="same"))
-model.add(BatchNormalization())
-model.add(MaxPooling2D(pool_size=(2, 2)))
-model.add(Dropout(0.4))
+        # Flatten: laver 2D billedet om til en lang liste af tal. Fully connected lag
+        # Efter 3x MaxPool2d: 48 → 24 → 12 → 6, så 128 * 6 * 6 = 4608
+        self.classifier = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(128 * 6 * 6, 256),
+            nn.BatchNorm1d(256),
+            nn.ReLU(inplace=True),
+            nn.Dropout(0.5),
+            # Output Lag: num_classes neuroner – en for hver følelse
+            # Softmax er implicit i CrossEntropyLoss, så den tilføjes ikke her
+            nn.Linear(256, num_classes),
+        )
 
-# Flatten: laver 2D billedet om til en lang liste af tal. Fully connected lag
-model.add(Flatten())
-model.add(Dense(256, activation="relu"))
-model.add(BatchNormalization())
-model.add(Dropout(0.5))
+    def forward(self, x):
+        x = self.block1(x)
+        x = self.block2(x)
+        x = self.block3(x)
+        x = self.classifier(x)
+        return x
 
-# Output Lag: 7 neuroner  en for hver følelse - med Softmax (sandsynligheder i % (zero sum))
-num_classes = train_generator.num_classes
-model.add(Dense(num_classes, activation="softmax"))
 
-# Oversigt over modellen
-model.summary()
 
-# Træning
-# Callbacks: funktioner der kører under træning i model.fit
-# Find og gem bedste model
-#OUTPUTS MADE RUN-SPECIFIC
-out_dir = os.path.join("outputs", run.info.run_id)
-os.makedirs(out_dir, exist_ok=True)
+# Training
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Bruger device: {device}")
 
-best_model_path = os.path.join(out_dir, "best_emotion_model.keras")
+num_classes = full_dataset.num_classes
+model = FERModel(num_classes).to(device)
 
-checkpoint = ModelCheckpoint(best_model_path,
-    monitor="val_accuracy",
-    save_best_only=True,
-    mode="max",
-    verbose=1,
+model_engine, optimizer, _, _ = deepspeed.initialize(
+    args=args,
+    model=model,
+    model_parameters=model.parameters(),
+    config="ds_config.json",
 )
 
-# Early stopping (før 50 epochs)
-early_stop = EarlyStopping(
-    monitor="val_loss",
-    patience=10,  # Stop hvis den ikke ser forbedring efter 10 epochs
-    restore_best_weights=True,
-)
+
+# Boiler-plate for setup af model før læring (strategi)
+criterion = nn.CrossEntropyLoss()
 
 # Kontroller learning_rate dynamisk
 reduce_lr = ReduceLROnPlateau(
-    monitor="val_loss", factor=0.2, patience=5, min_lr=0.00001, verbose=1
+    optimizer, mode="min", factor=0.2, patience=5, min_lr=0.00001, verbose=True
 )
 
-# Boiler-plate for setup af model før læring (strategi)
-model.compile(
-    optimizer=Adam(learning_rate=0.001),
-    loss="categorical_crossentropy",
-    metrics=["accuracy"],
-)
+# Output mappe
+out_dir = os.path.join("outputs", "fer_run")
+os.makedirs(out_dir, exist_ok=True)
+best_model_path = os.path.join(out_dir, "best_emotion_model.pt")
 
-# Fit modellen på træningsdata
-print("Starter træning...")
-history = model.fit(
-    train_generator,
-    steps_per_epoch=train_generator.samples // BATCH_SIZE,
-    epochs=EPOCHS,
-    validation_data=validation_generator,
-    validation_steps=validation_generator.samples // BATCH_SIZE,
-    callbacks=[checkpoint, early_stop, reduce_lr],
-)
+best_val_acc     = 0.0
+early_stop_count = 0
 
+history = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": []}
 
-# Resultater visualisering
-def plot_training_history(history, plotpath):
-    acc = history.history["accuracy"]
-    val_acc = history.history["val_accuracy"]
-    loss = history.history["loss"]
-    val_loss = history.history["val_loss"]
-    epochs_range = range(len(acc))
+with mlflow.start_run() as run:
+    mlflow.set_tags({
+        "git.commit":           os.getenv("GIT_COMMIT", ""),
+        "git.branch":           os.getenv("GIT_BRANCH", ""),
+        "jenkins.job":          os.getenv("JOB_NAME", ""),
+        "jenkins.build_number": os.getenv("BUILD_NUMBER", ""),
+        "jenkins.build_url":    os.getenv("BUILD_URL", ""),
+        "data.version":         os.getenv("DATA_VERSION", ""),
+    })
 
-    plt.figure(figsize=(12, 6))
+    mlflow.log_params({
+        "train_dir":    TRAIN_DIR,
+        "img_size":     IMG_SIZE,
+        "batch_size":   BATCH_SIZE,
+        "epochs_max":   EPOCHS,
+        "dataset_mean": DATASET_MEAN,
+        "dataset_std":  DATASET_STD,
+    })
 
-    # Plot accuracy
-    plt.subplot(1, 2, 1)
-    plt.plot(epochs_range, acc, label="Training Accuracy")
-    plt.plot(epochs_range, val_acc, label="Validation Accuracy")
-    plt.legend(loc="lower right")
-    plt.title("Training vs Validation Accuracy")
+    # Fit model to training data
+    print("Starter træning...")
+    for epoch in range(EPOCHS):
+        # --- Træning ---
+        model_engine.train()
+        running_loss, correct, total = 0.0, 0, 0
 
-    # Plot loss
-    plt.subplot(1, 2, 2)
-    plt.plot(epochs_range, loss, label="Training Loss")
-    plt.plot(epochs_range, val_loss, label="Validation Loss")
-    plt.legend(loc="upper right")
-    plt.title("Training vs Validation Loss")
+        for images, labels in train_loader:
+            images = images.to(device)
+            labels = labels.to(device)
 
-    plt.savefig(history, plot_path,)
+            logits = model_engine(images)
+            loss   = criterion(logits, labels)
+            model_engine.backward(loss)
+            model_engine.step()
 
-# Plots + best model in MLFLow
-plot_path = os.path.join(out_dir, "training_results.png")
-plot_training_history(history, plot_path)
+            running_loss += loss.item() * labels.size(0)
+            correct      += (logits.argmax(1) == labels).sum().item()
+            total        += labels.size(0)
 
-mlflow.log_artifact(plot_path, artifact_path="plots")
-mlflow.log_artifact(best_model_path, artifact_path="checkpoints")
+        train_loss = running_loss / total
+        train_acc  = correct      / total
+
+        # Validation
+        model_engine.eval()
+        val_loss_sum, val_correct, val_total = 0.0, 0, 0
+
+        with torch.no_grad():
+            for images, labels in val_loader:
+                images = images.to(device)
+                labels = labels.to(device)
+
+                logits = model_engine(images)
+                loss   = criterion(logits, labels)
+
+                val_loss_sum += loss.item() * labels.size(0)
+                val_correct  += (logits.argmax(1) == labels).sum().item()
+                val_total    += labels.size(0)
+
+        val_loss = val_loss_sum / val_total
+        val_acc  = val_correct  / val_total
+
+        history["train_loss"].append(train_loss)
+        history["train_acc"].append(train_acc)
+        history["val_loss"].append(val_loss)
+        history["val_acc"].append(val_acc)
+
+        print(f"Epoch [{epoch+1}/{EPOCHS}] "
+              f"Train Loss: {train_loss:.4f} Acc: {train_acc:.4f} | "
+              f"Val Loss: {val_loss:.4f} Acc: {val_acc:.4f}")
+
+        mlflow.log_metrics({
+            "train_loss": train_loss,
+            "train_acc":  train_acc,
+            "val_loss":   val_loss,
+            "val_acc":    val_acc,
+        }, step=epoch)
+
+        # Find and save best model
+        if val_acc > best_val_acc:
+            best_val_acc = val_acc
+            torch.save(model.state_dict(), best_model_path)
+            print(f"  → Ny bedste model gemt (val_acc={best_val_acc:.4f})")
+
+        # Kontroller learning_rate dynamisk
+        reduce_lr.step(val_loss)
+
+        # Early stopping (før 50 epochs)
+        # Stop hvis den ikke ser forbedring efter 10 epochs
+        if val_loss < min(history["val_loss"][:-1], default=float("inf")):
+            early_stop_count = 0
+        else:
+            early_stop_count += 1
+            if early_stop_count >= 10:
+                print(f"Early stopping efter epoch {epoch+1}")
+                break
+
+    # Resultater visualisering
+    def plot_training_history(history, plot_path):
+        acc      = history["train_acc"]
+        val_acc  = history["val_acc"]
+        loss     = history["train_loss"]
+        val_loss = history["val_loss"]
+        epochs_range = range(len(acc))
+
+        plt.figure(figsize=(12, 6))
+
+        # Plot accuracy
+        plt.subplot(1, 2, 1)
+        plt.plot(epochs_range, acc,     label="Training Accuracy")
+        plt.plot(epochs_range, val_acc, label="Validation Accuracy")
+        plt.legend(loc="lower right")
+        plt.title("Training vs Validation Accuracy")
+
+        # Plot loss
+        plt.subplot(1, 2, 2)
+        plt.plot(epochs_range, loss,     label="Training Loss")
+        plt.plot(epochs_range, val_loss, label="Validation Loss")
+        plt.legend(loc="upper right")
+        plt.title("Training vs Validation Loss")
+
+        plt.tight_layout()
+        plt.savefig(plot_path)
+        plt.close()
+
+    # Plots + best model in MLflow
+    plot_path = os.path.join(out_dir, "training_results.png")
+    plot_training_history(history, plot_path)
+
+    mlflow.log_artifact(plot_path,       artifact_path="plots")
+    mlflow.log_artifact(best_model_path, artifact_path="checkpoints")
