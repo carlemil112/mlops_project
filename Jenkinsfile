@@ -71,7 +71,7 @@ parameters {
             }
             }
         }
-        stage('Training of model'){
+        stage('Training Model'){
             when { expression { return params.RUN_TRAINING } }
             steps {
                 sh '''
