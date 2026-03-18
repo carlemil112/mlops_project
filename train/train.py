@@ -8,6 +8,7 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
+
 # to start training with deepspeed: deepspeed --num_gpus=2 train_pytorch.py
 # Watch VRAM while it runs with: watch -n 1 nvidia-smi
 import deepspeed
