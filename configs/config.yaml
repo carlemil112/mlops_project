@@ -1,54 +1,48 @@
-# Paths
-data_path: "data"
-checkpoint_path: "checkpoint/random_unet.tar"
-output_path: "test_output_images"
-
-# Dataset/splits
-train_split: "train-standard"
-val_split: "val"
-
-# Dataloader
-train_batch_size: 512
-val_batch_size: 1
-train_shuffle: true
-val_shuffle: false
-num_workers: 16
-
-# Seed and Device
-seed: 42
-device: "auto"
 
 
-# Losses
-train_loss: "mse"
-val_loss: "l1"
+# Test
+test_script:
+  data:
+    data_path: "data"
+    checkpoint_path: "checkpoint/random_unet.tar"
+    output_path: "test_output_images"
+    train_split: "train-standard"
+    val_split: "val"
 
-
-# Optimizer
-optimizer: "sgd"
-momentum: 0.9
-weight_decay: 0.0001
-
+  dataloader:
+    train_batch_size: 512
+    val_batch_size: 1
+    train_shuffle: true
+    val_shuffle: false
+    num_workers: 16
 
 
 # Train
-data:
-  train_dir: "FER-2013/train_balanced"
-  img_size: 48
-  batch_size: 64
-  validation_split: 0.2
-  dataset_mean: 0.5147
-  dataset_std: 0.2536
+train_script:
+  data:
+    data_path: "FER-2013/train_balanced"
+    img_size: 48
+    batch_size: 64
+    validation_split: 0.2
+    dataset_mean: 0.5147
+    dataset_std: 0.2536
 
-training:
-  epochs: 50
-  learning_rate: 0.001
-  early_stop_patience: 10
-  reduce_lr_factor: 0.2
-  reduce_lr_patience: 5
-  min_lr: 0.00001
+  training:
+    epochs: 50
+    learning_rate: 0.001
+    early_stop_patience: 10
+    reduce_lr_factor: 0.2
+    reduce_lr_patience: 5
+    min_lr: 0.00001
 
-model:
-  dropout_conv: 0.4
-  dropout_dense: 0.5
-  dense_units: 256
+  model:
+    dropout_conv: 0.4
+    dropout_dense: 0.5
+    dense_units: 256
+
+  dataloader:
+    train_batch_size: 512
+    val_batch_size: 1
+    train_shuffle: true
+    val_shuffle: false
+    num_workers: 16
