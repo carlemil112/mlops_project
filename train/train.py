@@ -6,7 +6,6 @@ import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
-from torch.optim import Adam
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 # to start training with deepspeed: deepspeed --num_gpus=2 train_pytorch.py
@@ -30,13 +29,13 @@ mlflow.set_experiment(os.getenv("MLFLOW_EXPERIMENT_NAME", "MLFlow FER tracking")
 
 # Configuration and parameters
 TRAIN_DIR = "FER-2013/train_balanced"  # Balanced data
-IMG_SIZE = 48                          # Standard size image
-BATCH_SIZE = 64                        # Amount if images pr. batch
-EPOCHS = 50                            
+IMG_SIZE = 48  # Standard size image
+BATCH_SIZE = 64  # Amount if images pr. batch
+EPOCHS = 50
 
 # mean and std values from data analysis
 DATASET_MEAN = 0.5147
-DATASET_STD  = 0.2536
+DATASET_STD = 0.2536
 
 
 # Dataset
@@ -72,15 +71,18 @@ class FERDataset(Dataset):
         return img, label
 
 
-
 # Transforms
 # This function runs on every image hitting the model
-transform = transforms.Compose([
-    transforms.Resize((IMG_SIZE, IMG_SIZE)),           # target_size=(IMG_SIZE, IMG_SIZE)
-    transforms.ToTensor(),                             # [0,255] → [0.0, 1.0] + tensor
-    transforms.Normalize(mean=[DATASET_MEAN],          # (pixel - mean) / std
-                         std=[DATASET_STD]),
-])
+transform = transforms.Compose(
+    [
+        transforms.Resize((IMG_SIZE, IMG_SIZE)),  # target_size=(IMG_SIZE, IMG_SIZE)
+        transforms.ToTensor(),  # [0,255] → [0.0, 1.0] + tensor
+        transforms.Normalize(
+            mean=[DATASET_MEAN],
+            std=[DATASET_STD],  # (pixel - mean) / std
+        ),
+    ]
+)
 
 
 # Data split + DataLoader
@@ -89,10 +91,11 @@ print("Opsætter data generators...")
 full_dataset = FERDataset(TRAIN_DIR, transform=transform)
 
 # Svarer til validation_split=0.2
-val_size   = int(0.2 * len(full_dataset))
+val_size = int(0.2 * len(full_dataset))
 train_size = len(full_dataset) - val_size
 train_dataset, val_dataset = torch.utils.data.random_split(
-    full_dataset, [train_size, val_size],
+    full_dataset,
+    [train_size, val_size],
     generator=torch.Generator().manual_seed(42),  # Reproducible split
 )
 
@@ -124,14 +127,18 @@ class FERModel(nn.Module):
         # BatchNormalization: stabiliserer læringen
         # MaxPooling: gør billedet mindre (halverer størrelsen) for at reducere beregninger
         self.block1 = nn.Sequential(
-            nn.Conv2d(1, 64, kernel_size=3, padding=1),   # 1 kanal ind (grayscale), 64 filtre ud
+            nn.Conv2d(
+                1, 64, kernel_size=3, padding=1
+            ),  # 1 kanal ind (grayscale), 64 filtre ud
             nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
             nn.Conv2d(64, 64, kernel_size=3, padding=1),
             nn.BatchNorm2d(64),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(2, 2),
-            nn.Dropout2d(0.4),  # Slukker tilfældige neuroner for at hjælpe med at forhindre overfitting
+            nn.Dropout2d(
+                0.4
+            ),  # Slukker tilfældige neuroner for at hjælpe med at forhindre overfitting
         )
 
         # Dybden øges (128 filtre) for at finde mere komplekse mønstre (former, øjne)
@@ -176,7 +183,6 @@ class FERModel(nn.Module):
         return x
 
 
-
 # Training
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Bruger device: {device}")
@@ -205,29 +211,33 @@ out_dir = os.path.join("outputs", "fer_run")
 os.makedirs(out_dir, exist_ok=True)
 best_model_path = os.path.join(out_dir, "best_emotion_model.pt")
 
-best_val_acc     = 0.0
+best_val_acc = 0.0
 early_stop_count = 0
 
 history = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": []}
 
 with mlflow.start_run() as run:
-    mlflow.set_tags({
-        "git.commit":           os.getenv("GIT_COMMIT", ""),
-        "git.branch":           os.getenv("GIT_BRANCH", ""),
-        "jenkins.job":          os.getenv("JOB_NAME", ""),
-        "jenkins.build_number": os.getenv("BUILD_NUMBER", ""),
-        "jenkins.build_url":    os.getenv("BUILD_URL", ""),
-        "data.version":         os.getenv("DATA_VERSION", ""),
-    })
+    mlflow.set_tags(
+        {
+            "git.commit": os.getenv("GIT_COMMIT", ""),
+            "git.branch": os.getenv("GIT_BRANCH", ""),
+            "jenkins.job": os.getenv("JOB_NAME", ""),
+            "jenkins.build_number": os.getenv("BUILD_NUMBER", ""),
+            "jenkins.build_url": os.getenv("BUILD_URL", ""),
+            "data.version": os.getenv("DATA_VERSION", ""),
+        }
+    )
 
-    mlflow.log_params({
-        "train_dir":    TRAIN_DIR,
-        "img_size":     IMG_SIZE,
-        "batch_size":   BATCH_SIZE,
-        "epochs_max":   EPOCHS,
-        "dataset_mean": DATASET_MEAN,
-        "dataset_std":  DATASET_STD,
-    })
+    mlflow.log_params(
+        {
+            "train_dir": TRAIN_DIR,
+            "img_size": IMG_SIZE,
+            "batch_size": BATCH_SIZE,
+            "epochs_max": EPOCHS,
+            "dataset_mean": DATASET_MEAN,
+            "dataset_std": DATASET_STD,
+        }
+    )
 
     # Fit model to training data
     print("Starter træning...")
@@ -241,16 +251,16 @@ with mlflow.start_run() as run:
             labels = labels.to(device)
 
             logits = model_engine(images)
-            loss   = criterion(logits, labels)
+            loss = criterion(logits, labels)
             model_engine.backward(loss)
             model_engine.step()
 
             running_loss += loss.item() * labels.size(0)
-            correct      += (logits.argmax(1) == labels).sum().item()
-            total        += labels.size(0)
+            correct += (logits.argmax(1) == labels).sum().item()
+            total += labels.size(0)
 
         train_loss = running_loss / total
-        train_acc  = correct      / total
+        train_acc = correct / total
 
         # Validation
         model_engine.eval()
@@ -262,30 +272,35 @@ with mlflow.start_run() as run:
                 labels = labels.to(device)
 
                 logits = model_engine(images)
-                loss   = criterion(logits, labels)
+                loss = criterion(logits, labels)
 
                 val_loss_sum += loss.item() * labels.size(0)
-                val_correct  += (logits.argmax(1) == labels).sum().item()
-                val_total    += labels.size(0)
+                val_correct += (logits.argmax(1) == labels).sum().item()
+                val_total += labels.size(0)
 
         val_loss = val_loss_sum / val_total
-        val_acc  = val_correct  / val_total
+        val_acc = val_correct / val_total
 
         history["train_loss"].append(train_loss)
         history["train_acc"].append(train_acc)
         history["val_loss"].append(val_loss)
         history["val_acc"].append(val_acc)
 
-        print(f"Epoch [{epoch+1}/{EPOCHS}] "
-              f"Train Loss: {train_loss:.4f} Acc: {train_acc:.4f} | "
-              f"Val Loss: {val_loss:.4f} Acc: {val_acc:.4f}")
+        print(
+            f"Epoch [{epoch+1}/{EPOCHS}] "
+            f"Train Loss: {train_loss:.4f} Acc: {train_acc:.4f} | "
+            f"Val Loss: {val_loss:.4f} Acc: {val_acc:.4f}"
+        )
 
-        mlflow.log_metrics({
-            "train_loss": train_loss,
-            "train_acc":  train_acc,
-            "val_loss":   val_loss,
-            "val_acc":    val_acc,
-        }, step=epoch)
+        mlflow.log_metrics(
+            {
+                "train_loss": train_loss,
+                "train_acc": train_acc,
+                "val_loss": val_loss,
+                "val_acc": val_acc,
+            },
+            step=epoch,
+        )
 
         # Find and save best model
         if val_acc > best_val_acc:
@@ -308,9 +323,9 @@ with mlflow.start_run() as run:
 
     # Resultater visualisering
     def plot_training_history(history, plot_path):
-        acc      = history["train_acc"]
-        val_acc  = history["val_acc"]
-        loss     = history["train_loss"]
+        acc = history["train_acc"]
+        val_acc = history["val_acc"]
+        loss = history["train_loss"]
         val_loss = history["val_loss"]
         epochs_range = range(len(acc))
 
@@ -318,14 +333,14 @@ with mlflow.start_run() as run:
 
         # Plot accuracy
         plt.subplot(1, 2, 1)
-        plt.plot(epochs_range, acc,     label="Training Accuracy")
+        plt.plot(epochs_range, acc, label="Training Accuracy")
         plt.plot(epochs_range, val_acc, label="Validation Accuracy")
         plt.legend(loc="lower right")
         plt.title("Training vs Validation Accuracy")
 
         # Plot loss
         plt.subplot(1, 2, 2)
-        plt.plot(epochs_range, loss,     label="Training Loss")
+        plt.plot(epochs_range, loss, label="Training Loss")
         plt.plot(epochs_range, val_loss, label="Validation Loss")
         plt.legend(loc="upper right")
         plt.title("Training vs Validation Loss")
@@ -338,5 +353,5 @@ with mlflow.start_run() as run:
     plot_path = os.path.join(out_dir, "training_results.png")
     plot_training_history(history, plot_path)
 
-    mlflow.log_artifact(plot_path,       artifact_path="plots")
+    mlflow.log_artifact(plot_path, artifact_path="plots")
     mlflow.log_artifact(best_model_path, artifact_path="checkpoints")
