@@ -30,7 +30,8 @@ mlflow.set_experiment(os.getenv("MLFLOW_EXPERIMENT_NAME", "MLFlow FER tracking")
 
 
 # Dataset
-@hydra.main(config_path="configs", config_name="config", version_base=None)
+
+
 class FERDataset(Dataset):
     def __init__(self, root_dir, transform=None):
         self.samples = []
