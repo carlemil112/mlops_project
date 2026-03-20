@@ -1,4 +1,5 @@
 
+# @hydra.main(config_path="configs", config_name="config", version_base=None)
 
 # Test
 test_script:
@@ -19,6 +20,7 @@ test_script:
 
 # Train
 train_script:
+  seed: 42
   data:
     data_path: "FER-2013/train_balanced"
     img_size: 48
@@ -46,3 +48,9 @@ train_script:
     train_shuffle: true
     val_shuffle: false
     num_workers: 16
+
+  mlflow:
+    name: tracker
+
+  deepspeed:
+    config_path: configs/ds_config.json
