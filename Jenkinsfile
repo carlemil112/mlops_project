@@ -102,24 +102,18 @@ parameters {
         }
 
 
-    post {
-        always {
-            archiveArtifacts artifacts: 'outputs/**', fingerprint: true, allowEmptyArchive: true
-            }
-    }
-    }
-    stage('Cleanup'){
-        steps {
-            always {
-            // cleanup
-                sh '''
-                    GIT_COMMIT=$(git rev-parse HEAD)
-                    SHORT_SHA=$(echo "$GIT_COMMIT" | cut -c1-7)
-                    docker image rm -f mlops_project_tests:$BUILD_NUMBER mlops_project_tests:$SHORT_SHA || true
 
-                '''
-        }
+
+        stage('Cleanup'){
+            steps {
+            // cleanup
+                    sh '''
+                        GIT_COMMIT=$(git rev-parse HEAD)
+                        SHORT_SHA=$(echo "$GIT_COMMIT" | cut -c1-7)
+                        docker image rm -f mlops_project_tests:$BUILD_NUMBER mlops_project_tests:$SHORT_SHA || true
+
+                    '''
+            }
+                    }
     }
-}
-}
 }
