@@ -71,35 +71,35 @@ parameters {
             }
             }
         }
-stage('Training Model') {
-    when { expression { return params.RUN_TRAINING } }
-    steps {
-        sh '''
-            mkdir -p outputs
-            GIT_COMMIT=$(git rev-parse HEAD)
-            GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+        stage('Training Model') {
+            when { expression { return params.RUN_TRAINING } }
+            steps {
+                sh '''
+                    mkdir -p outputs
+                    GIT_COMMIT=$(git rev-parse HEAD)
+                    GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 
-            docker run --rm \
-                --gpus all \
-                -v "$PWD:/app" \
-                -w /app \
-                -e MLFLOW_TRACKING_URI="${MLFLOW_TRACKING_URI}" \
-                -e MLFLOW_EXPERIMENT_NAME="${MLFLOW_EXPERIMENT_NAME}" \
-                -e GIT_COMMIT="$GIT_COMMIT" \
-                -e GIT_BRANCH="$GIT_BRANCH" \
-                -e JOB_NAME="${JOB_NAME}" \
-                -e BUILD_NUMBER="${BUILD_NUMBER}" \
-                -e BUILD_URL="${BUILD_URL}" \
-                mlops_project_tests:$BUILD_NUMBER \
-                deepspeed --num_gpus=1 train.py
-        '''
-    }
-    post {
-        always {
-            archiveArtifacts artifacts: 'outputs/**', fingerprint: true, allowEmptyArchive: true
+                    docker run --rm \
+                        --gpus all \
+                        -v "$PWD:/app" \
+                        -w /app \
+                        -e MLFLOW_TRACKING_URI="${MLFLOW_TRACKING_URI}" \
+                        -e MLFLOW_EXPERIMENT_NAME="${MLFLOW_EXPERIMENT_NAME}" \
+                        -e GIT_COMMIT="$GIT_COMMIT" \
+                        -e GIT_BRANCH="$GIT_BRANCH" \
+                        -e JOB_NAME="${JOB_NAME}" \
+                        -e BUILD_NUMBER="${BUILD_NUMBER}" \
+                        -e BUILD_URL="${BUILD_URL}" \
+                        mlops_project_tests:$BUILD_NUMBER \
+                        deepspeed --num_gpus=1 train.py
+                '''
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'outputs/**', fingerprint: true, allowEmptyArchive: true
+                }
+            }
         }
-    }
-}
 
 
     post {
