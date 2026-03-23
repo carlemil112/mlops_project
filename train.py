@@ -256,12 +256,12 @@ def train(cfg: DictConfig):
                 if early_stop_count >= 10:
                     print(f"Early stopping efter epoch {epoch+1}")
                     break
-    # Plots + best model in MLflow
-    plot_path = os.path.join(out_dir, "training_results.png")
-    plot_training_history(history, plot_path)
+        # Plots + best model in MLflow
+        plot_path = os.path.join(out_dir, "training_results.png")
+        plot_training_history(history, plot_path)
 
-    mlflow.log_artifact(plot_path, artifact_path="plots")
-    mlflow.log_artifact(best_model_path, artifact_path="checkpoints")
+        mlflow.log_artifact(plot_path, artifact_path="plots")
+        mlflow.log_artifact(best_model_path, artifact_path="checkpoints")
 
     # Resultater visualisering
 
