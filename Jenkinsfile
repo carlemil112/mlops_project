@@ -7,8 +7,12 @@ pipeline {
         skipDefaultCheckout()
     }
 parameters {
-  booleanParam(name: 'RUN_TRAINING', defaultValue: false, description: 'Run training stage?')
-}
+    booleanParam(name: 'RUN_TRAINING', defaultValue: false, description: 'Run training stage?')
+    booleanParam(name: 'RUN_EVALUATION',  defaultValue: true,  description: 'Run evaluation?')
+    booleanParam(name: 'REGISTER_MODEL',  defaultValue: false, description: 'Push to model registry?')
+    choice(name: 'DATASET', choices: ['small', 'medium', 'full'], description: 'Dataset size?')
+    }
+
     stages {
         stage('Clean Workspace') {
             steps {
