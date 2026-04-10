@@ -1,47 +1,17 @@
 
 # @hydra.main(config_path="configs", config_name="config", version_base=None)
 
-# Test
-test_script:
-  data:
-    data_path: "data"
-    checkpoint_path: "checkpoint/random_unet.tar"
-    output_path: "test_output_images"
-    train_split: "train-standard"
-    val_split: "val"
-
-  dataloader:
-    train_batch_size: 512
-    val_batch_size: 1
-    train_shuffle: true
-    val_shuffle: false
-    num_workers: 16
+# Config selection
 
 
-# Train
-train_script:
-  seed: 42
-  data:
-    data_path: "FER-2013/train_balanced"
-    img_size: 48
-    batch_size: 64
-    validation_split: 0.2
-    dataset_mean: 0.5147
-    dataset_std: 0.2536
+defaults:
+  dataloader: default
+  script: train
+  paths: local # local or ailab
 
-  training:
-    epochs: 50
-    learning_rate: 0.001
-    early_stop_patience: 10
-    reduce_lr_factor: 0.2
-    reduce_lr_patience: 5
-    min_lr: 0.00001
 
-  model:
-    dropout_conv: 0.4
-    dropout_dense: 0.5
-    dense_units: 256
 
+<<<<<<< HEAD
   dataloader:
     train_batch_size: 512
     val_batch_size: 1
@@ -55,3 +25,9 @@ train_script:
 
   deepspeed:
     config_path: configs/ds_config.json
+=======
+# Shared params
+seed: 42
+mlflow_name: tracker
+ds_config: configs/ds_config.json
+>>>>>>> 7ab9104 (Changed config structure to align with hydra)

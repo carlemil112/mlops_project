@@ -1,0 +1,25 @@
+
+# @hydra.main(config_path="configs", config_name="config", version_base=None)
+
+# Dataloader
+
+checkpoint_path: "checkpoint/random_unet.tar"
+output_path: "test_output_images"
+train_split: "train-standard"
+val_split: "val"
+
+
+# Train/Test dataloader hyperparameters
+train_batch_size: 512
+val_batch_size: 1
+train_shuffle: true
+val_shuffle: false
+num_workers: 16
+
+
+ # Image technical details
+img_size: 48
+batch_size: 64
+validation_split: 0.2
+dataset_mean: 0.5147
+dataset_std: 0.2536
