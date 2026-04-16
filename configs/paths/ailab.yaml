@@ -1,0 +1,4 @@
+# Not setup yet
+data_path: "/shared/datasets/FER-2013/train_balanced"
+checkpoint_path: "/shared/checkpoints/random_unet.tar"
+output_path: "/shared/outputs/test_output_images"

@@ -10,24 +10,12 @@ defaults:
   paths: local # local or ailab
 
 
-
-<<<<<<< HEAD
-  dataloader:
-    train_batch_size: 512
-    val_batch_size: 1
-    train_shuffle: true
-    val_shuffle: false
-    num_workers: 16
-
   mlflow:
     name: tracker
     tracking_uri: "http://172.24.198.42:5050"
 
   deepspeed:
     config_path: configs/ds_config.json
-=======
+
 # Shared params
 seed: 42
-mlflow_name: tracker
-ds_config: configs/ds_config.json
->>>>>>> 7ab9104 (Changed config structure to align with hydra)

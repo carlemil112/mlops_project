@@ -15,6 +15,7 @@ from model.fer_model import FERModel
 
 # Config file handling with hydra
 import hydra
+from hydra.utils import get_original_cwd
 from omegaconf import DictConfig
 
 # to start training with deepspeed: deepspeed --num_gpus=2 train_pytorch.py
@@ -22,8 +23,6 @@ from omegaconf import DictConfig
 import deepspeed
 import mlflow
 import mlflow.pytorch
-
-
 
 
 # Dataset
@@ -61,37 +60,33 @@ class FERDataset(Dataset):
         return img, label
 
 
-@hydra.main(config_path="configs", config_name="config", version_base=None)
+@hydra.main(version_base=None, config_path="configs", config_name="config")
 def train(cfg: DictConfig):
     # MLFlow configuration
     mlflow.set_tracking_uri(cfg.mlflow.tracking_uri)
     mlflow.set_experiment(cfg.mlflow.name)
     # Config loading with hydra
-    TRAIN_DIR = cfg.train_script.data.data_path  # Balanced data
-    IMG_SIZE = cfg.train_script.data.image_size  # Standard size image
-    BATCH_SIZE = cfg.train_script.training.batch_size  # Amount if images pr. batch
-    EPOCHS = cfg.train_script.training.epochs
-    LEARNING_RATE = cfg.train_script.training.learning_rate
-    SEED = cfg.train_script.seed
-    DATASET_MEAN = cfg.train_script.data.dataset_mean
-    DATASET_STD = cfg.train_script.data.dataset_std
 
+    SEED = cfg.seed
+    DATA_PATH = os.path.join(get_original_cwd(), cfg.paths.data_path)
     # Transforms
     # This function runs on every image hitting the model
     transform = transforms.Compose(
         [
-            transforms.Resize((IMG_SIZE, IMG_SIZE)),  # target_size=(IMG_SIZE, IMG_SIZE)
+            transforms.Resize(
+                (cfg.script.img_size, cfg.script.img_size)
+            ),  # target_size=(IMG_SIZE, IMG_SIZE)
             transforms.ToTensor(),  # [0,255] → [0.0, 1.0] + tensor
             transforms.Normalize(
-                mean=[DATASET_MEAN],
-                std=[DATASET_STD],  # (pixel - mean) / std
+                mean=[cfg.script.dataset_mean],
+                std=[cfg.script.dataset_std],  # (pixel - mean) / std
             ),
         ]
     )
     # Data split + DataLoader
     print("Opsætter data generators...")
 
-    full_dataset = FERDataset(TRAIN_DIR, transform=transform)
+    full_dataset = FERDataset(DATA_PATH, transform=transform)
 
     # Svarer til validation_split=0.2
     val_size = int(0.2 * len(full_dataset))
@@ -105,23 +100,23 @@ def train(cfg: DictConfig):
     # Generator for train data
     train_loader = DataLoader(
         train_dataset,
-        batch_size=BATCH_SIZE,
+        batch_size=cfg.script.batch_size,
         shuffle=True,
-        num_workers=4,
+        num_workers=cfg.dataloader.num_workers,
         pin_memory=True,
     )
 
     # Generator for val data
     val_loader = DataLoader(
         val_dataset,
-        batch_size=BATCH_SIZE,
+        batch_size=cfg.dataloader.val_batch_size,
         shuffle=False,
-        num_workers=4,
+        num_workers=cfg.dataloader.num_workers,
         pin_memory=True,
     )
 
     # Carbontracker implementation before training
-    tracker = CarbonTracker(epochs=EPOCHS)
+    tracker = CarbonTracker(cfg.script.epochs)
 
     # Training
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -129,7 +124,7 @@ def train(cfg: DictConfig):
 
     num_classes = full_dataset.num_classes
     model = FERModel(num_classes).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    optimizer = torch.optim.Adam(model.parameters(), lr=cfg.script.lr)
     model_engine, optimizer, _, _ = deepspeed.initialize(
         optimizer=optimizer,
         model=model,
@@ -169,20 +164,22 @@ def train(cfg: DictConfig):
 
         mlflow.log_params(
             {
-                "train_dir": TRAIN_DIR,
-                "img_size": IMG_SIZE,
-                "batch_size": BATCH_SIZE,
-                "epochs_max": EPOCHS,
-                "dataset_mean": DATASET_MEAN,
-                "dataset_std": DATASET_STD,
+                "train_dir": DATA_PATH,
+                "img_size": cfg.script.img_size,
+                "batch_size": cfg.script.batch_size,
+                "epochs_max": cfg.script.epochs,
+                "dataset_mean": cfg.script.dataset_mean,
+                "dataset_std": cfg.script.dataset_std,
             }
         )
 
         # Fit model to training data
         print("Starter træning...")
-        for epoch in range(EPOCHS):
+
+        for epoch in range(cfg.script.epochs):
             # initiating carbontracker
             tracker.epoch_start()
+
             # --- Træning ---
             model_engine.train()
             running_loss, correct, total = 0.0, 0, 0
@@ -228,7 +225,7 @@ def train(cfg: DictConfig):
             history["val_acc"].append(val_acc)
 
             print(
-                f"Epoch [{epoch+1}/{EPOCHS}] "
+                f"Epoch [{epoch+1}/{cfg.script.epochs}] "
                 f"Train Loss: {train_loss:.4f} Acc: {train_acc:.4f} | "
                 f"Val Loss: {val_loss:.4f} Acc: {val_acc:.4f}"
             )
@@ -261,7 +258,7 @@ def train(cfg: DictConfig):
                 if early_stop_count >= 10:
                     print(f"Early stopping efter epoch {epoch+1}")
                     break
-            
+
             tracker.epoch_end()
 
         tracker.stop()

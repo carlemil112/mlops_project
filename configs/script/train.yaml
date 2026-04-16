@@ -1,2 +1,9 @@
-
-# @hydra.main(config_path="configs", config_name="config", version_base=None)
+img_size: 48
+batch_size: 64
+epochs: 20
+validation_split: 0.2
+dataset_mean: 0.5147
+dataset_std: 0.2536
+train_split: "train-standard"
+val_split: "val"
+lr: 0.0000002
