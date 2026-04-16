@@ -129,7 +129,7 @@ def train(cfg: DictConfig):
         optimizer=optimizer,
         model=model,
         model_parameters=model.parameters(),
-        config="configs/ds_config.json",
+        config=cfg.deepspeed.config_path,
     )
 
     # Boiler-plate for setup af model før læring (strategi)
