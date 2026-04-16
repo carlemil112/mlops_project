@@ -13,3 +13,4 @@ numpy
 opencv_python
 tensorflow
 deepspeed
+carbontracker
