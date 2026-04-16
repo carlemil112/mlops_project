@@ -5,17 +5,17 @@
 
 
 defaults:
-  dataloader: default
-  script: train
-  paths: local # local or ailab
-
-
-  mlflow:
-    name: tracker
-    tracking_uri: "http://172.24.198.42:5050"
-
-  deepspeed:
-    config_path: configs/ds_config.json
+  - dataloader: default
+  - script: train
+  - paths: local # local or ailab
+  - _self_ # Hydra needs this apparently. Can cause conflicts with pre commit hooks.
 
 # Shared params
 seed: 42
+
+mlflow:
+  name: tracker
+  tracking_uri: "http://172.24.198.42:5050"
+
+deepspeed:
+  config_path: configs/ds_config.json
