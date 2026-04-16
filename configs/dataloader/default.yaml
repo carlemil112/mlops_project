@@ -1,5 +1,4 @@
 # Shared dataloader stuff
-train_batch_size: 512
 val_batch_size: 1
 train_shuffle: true
 val_shuffle: false
