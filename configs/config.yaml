@@ -51,6 +51,7 @@ train_script:
 
   mlflow:
     name: tracker
+    tracking_uri: "http://172.24.198.42:5050"
 
   deepspeed:
     config_path: configs/ds_config.json

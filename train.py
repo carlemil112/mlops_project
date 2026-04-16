@@ -21,12 +21,7 @@ import deepspeed
 import mlflow
 import mlflow.pytorch
 
-# MLFlow configuration
-tracking_uri = os.getenv("MLFLOW_TRACKING_URI")
-if tracking_uri:
-    mlflow.set_tracking_uri(tracking_uri)
 
-mlflow.set_experiment(os.getenv("MLFLOW_EXPERIMENT_NAME", "MLFlow FER tracking"))
 
 
 # Dataset
@@ -66,6 +61,10 @@ class FERDataset(Dataset):
 
 @hydra.main(config_path="configs", config_name="config", version_base=None)
 def train(cfg: DictConfig):
+    # MLFlow configuration
+    tracking_uri = os.getenv("MLFLOW_TRACKING_URI")
+    mlflow.set_tracking_uri(cfg.mlflow.tracking_uri)
+    mlflow.set_experiment(cfg.mlflow.name)
     # Config loading with hydra
     TRAIN_DIR = cfg.train_script.data.data_path  # Balanced data
     IMG_SIZE = cfg.train_script.data.image_size  # Standard size image
