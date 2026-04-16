@@ -8,6 +8,8 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
+from carbontracker.tracker import CarbonTracker
+
 # model script
 from model.fer_model import FERModel
 
@@ -62,7 +64,6 @@ class FERDataset(Dataset):
 @hydra.main(config_path="configs", config_name="config", version_base=None)
 def train(cfg: DictConfig):
     # MLFlow configuration
-    tracking_uri = os.getenv("MLFLOW_TRACKING_URI")
     mlflow.set_tracking_uri(cfg.mlflow.tracking_uri)
     mlflow.set_experiment(cfg.mlflow.name)
     # Config loading with hydra
@@ -118,6 +119,9 @@ def train(cfg: DictConfig):
         num_workers=4,
         pin_memory=True,
     )
+
+    # Carbontracker implementation before training
+    tracker = CarbonTracker(epochs=EPOCHS)
 
     # Training
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -177,6 +181,8 @@ def train(cfg: DictConfig):
         # Fit model to training data
         print("Starter træning...")
         for epoch in range(EPOCHS):
+            # initiating carbontracker
+            tracker.epoch_start()
             # --- Træning ---
             model_engine.train()
             running_loss, correct, total = 0.0, 0, 0
@@ -255,6 +261,11 @@ def train(cfg: DictConfig):
                 if early_stop_count >= 10:
                     print(f"Early stopping efter epoch {epoch+1}")
                     break
+            
+            tracker.epoch_end()
+
+        tracker.stop()
+
         # Plots + best model in MLflow
         plot_path = os.path.join(out_dir, "training_results.png")
         plot_training_history(history, plot_path)
