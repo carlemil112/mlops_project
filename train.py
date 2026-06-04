@@ -23,6 +23,14 @@ from omegaconf import DictConfig
 import deepspeed
 import mlflow
 import mlflow.pytorch
+import sys
+
+# Filter out --local_rank argument injected by DeepSpeed before Hydra sees it
+sys.argv = [a for a in sys.argv if not a.startswith("--local_rank")]
+
+@hydra.main(version_base=None, config_path="configs", config_name="config")
+def train(cfg: DictConfig):
+    ...
 
 
 # Dataset
