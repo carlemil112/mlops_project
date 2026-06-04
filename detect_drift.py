@@ -13,6 +13,10 @@ import hydra
 from omegaconf import DictConfig
 from torch.utils.data import Dataset, DataLoader, random_split
 
+import inspect
+print(inspect.signature(torchdrift.utils.check))
+print(inspect.signature(torchdrift.utils.fit))
+
 
 print(dir(torchdrift.utils))
 print(dir(torchdrift.detectors))
