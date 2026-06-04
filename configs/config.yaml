@@ -8,7 +8,7 @@ defaults:
   - dataloader: default
   - script: train
   - paths: local # local or ailab
-  - _self_ # Hydra needs this apparently. Can cause conflicts with pre commit hooks.
+# - _self_ # Hydra needs this apparently. Can cause conflicts with pre commit hooks.
 
 # Shared params
 seed: 42
