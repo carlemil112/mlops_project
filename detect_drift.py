@@ -134,20 +134,37 @@ def detect_drift(cfg: DictConfig):
     scale_loader = DataLoader(scale_dataset, batch_size=BATCH_SIZE, shuffle=False)
     color_loader = DataLoader(color_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
-    # 6. Kør TorchDrift med rettet Feature Extractor
-    # Vi tilføjer AdaptiveAvgPool2d for at tvinge output til at have samme dimension, 
-    # uanset om input er 48x48 eller 96x96.
-    feature_extractor = torch.nn.Sequential(
-        *list(model.children())[:-1],
-        torch.nn.AdaptiveAvgPool2d((1, 1)), # Reducerer (B, C, H, W) -> (B, C, 1, 1)
-        torch.nn.Flatten()                  # Fladgør til (B, C)
-    )
+    # 6. Kør TorchDrift med en skudsikker Feature Extractor
+    
+    # Vi laver en eksplicit wrapper, så vi er 100% sikre på, at både .fit() 
+    # og evalueringen modtager en 2D tensor (Batch, Features)
+    class SafeFeatureExtractor(torch.nn.Module):
+        def __init__(self, base_model):
+            super().__init__()
+            # Tag alle lag undtagen det absolut sidste klassifikations-lag (det lineære lag)
+            self.backbone = torch.nn.Sequential(*list(base_model.children())[:-1])
+            self.pool = torch.nn.AdaptiveAvgPool2d((1, 1))
+            self.flatten = torch.nn.Flatten()
+
+        def forward(self, x):
+            x = self.backbone(x)
+            # Hvis backbonen allerede har fladgjort det, skipper vi pooling/flatten
+            if len(x.shape) == 4:
+                x = self.pool(x)
+                x = self.flatten(x)
+            elif len(x.shape) > 2:
+                x = self.flatten(x)
+            return x
+
+    # Initialisér vores sikre extractor
+    feature_extractor = SafeFeatureExtractor(model)
     feature_extractor.to(device)
     feature_extractor.eval()
 
+    # Initialisér detector
     detector = torchdrift.detectors.KernelMMDDriftDetector()
     
-    # Fit detectoren på dit grayscale reference-data
+    # FIT DETECTOREN (Vigtigt: Nu modtager .fit() det korrekte 2D-format, og x.shape fejler ikke)
     torchdrift.utils.fit(
         dl=reference_loader, 
         feature_extractor=feature_extractor, 
@@ -160,7 +177,7 @@ def detect_drift(cfg: DictConfig):
         scale_loader, feature_extractor, detector, device, is_color_rgb=False
     )
 
-    # Beregn score og p-værdi for Scenario 2 (RGB -> Gray on-the-fly i funktionen)
+    # Beregn score og p-værdi for Scenario 2 (RGB -> Gray)
     color_score, color_p_val = extract_features_and_score(
         color_loader, feature_extractor, detector, device, is_color_rgb=True
     )
