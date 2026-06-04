@@ -14,6 +14,10 @@ from omegaconf import DictConfig
 from torch.utils.data import Dataset, DataLoader, random_split
 
 
+print(dir(torchdrift.utils))
+print(dir(torchdrift.detectors))
+
+
 class FERDataset(Dataset):
     def __init__(self, root_dir, transform=None, mode="L"):
         self.samples = []
