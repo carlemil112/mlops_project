@@ -133,35 +133,24 @@ def detect_drift(cfg: DictConfig):
 
     reference_loader = DataLoader(test_subset, batch_size=BATCH_SIZE)
 
-    # Feature extractor (remove last layer)
     feature_extractor = torch.nn.Sequential(*list(model.children())[:-1])
     feature_extractor.to(device)
     feature_extractor.eval()
 
-    # Fit detector to reference data
     detector = torchdrift.detectors.KernelMMDDriftDetector()
     torchdrift.utils.fit(reference_loader, feature_extractor, detector)
 
-    # Run on drifted data
-    def extract_features(loader, extractor, device, to_gray=False):
-        features = []
-        with torch.no_grad():
-            for imgs, _ in loader:
-                if to_gray:
-                    imgs = imgs.mean(dim=1, keepdim=True)  # RGB → grayscale
-                imgs = imgs.to(device)
-                out = extractor(imgs)
-                features.append(out.flatten(start_dim=1))
-        return torch.cat(features)
+    scale_score, scale_p_val = torchdrift.utils.check(scale_loader, feature_extractor, detector)
 
-    scale_features = extract_features(scale_loader, feature_extractor, device)
-    color_features = extract_features(color_loader, feature_extractor, device, to_gray=True)
+    # Color: konverter til grayscale før check
+    color_imgs = []
+    for imgs, _ in color_loader:
+        color_imgs.append(imgs.mean(dim=1, keepdim=True))
+    color_tensor = torch.cat(color_imgs)
+    color_dataset_gray = torch.utils.data.TensorDataset(color_tensor, torch.zeros(len(color_tensor)))
+    color_loader_gray = DataLoader(color_dataset_gray, batch_size=BATCH_SIZE)
+    color_score, color_p_val = torchdrift.utils.check(color_loader_gray, feature_extractor, detector)
 
-    scale_score = detector(scale_features)
-    color_score = detector(color_features)
-
-    scale_p_val = detector.compute_p_value(scale_features)
-    color_p_val = detector.compute_p_value(color_features)
 
 
     # 7. Log to MLflow
