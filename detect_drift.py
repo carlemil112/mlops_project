@@ -136,7 +136,7 @@ def detect_drift(cfg: DictConfig):
 
     # Fit detector to reference data
     detector = torchdrift.detectors.KernelMMDDriftDetector()
-    torchdrift.utils.fit(reference_loader, feature_extractor, detector, n_batches=10)
+    torchdrift.utils.fit(reference_loader, feature_extractor, detector)
 
     # Run on drifted data
     scale_score = detector(torchdrift.utils.extract_features(scale_loader, feature_extractor))
