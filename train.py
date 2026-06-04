@@ -26,12 +26,15 @@ import mlflow.pytorch
 import sys
 
 # Filter out --local_rank argument injected by DeepSpeed before Hydra sees it
+print(f"sys.argv before filter: {sys.argv}", flush=True)
 sys.argv = [a for a in sys.argv if not a.startswith("--local_rank")]
+print(f"sys.argv after filter: {sys.argv}", flush=True)
 
 @hydra.main(version_base=None, config_path="configs", config_name="config")
 def train(cfg: DictConfig):
-    ...
-
+    print("=== TRAIN FUNCTION CALLED ===", flush=True)
+    print(f"CWD: {os.getcwd()}", flush=True)
+    print(f"cfg.mlflow: {cfg.mlflow}", flush=True)
 
 # Dataset
 
