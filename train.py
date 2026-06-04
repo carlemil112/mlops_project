@@ -321,3 +321,12 @@ def plot_training_history(history, plot_path):
     plt.tight_layout()
     plt.savefig(plot_path)
     plt.close()
+
+if __name__ == "__main__":
+    try:
+        train()
+    except SystemExit as e:
+        print(f"SystemExit: {e}", flush=True)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
