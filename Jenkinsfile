@@ -89,6 +89,7 @@ parameters {
                         --gpus all \
                         -v "$PWD:/app" \
                         -w /app \
+                        -e CUDA_HOME=/usr/local/cuda \
                         -e MLFLOW_TRACKING_URI="${MLFLOW_TRACKING_URI}" \
                         -e MLFLOW_EXPERIMENT_NAME="${MLFLOW_EXPERIMENT_NAME}" \
                         -e GIT_COMMIT="$GIT_COMMIT" \
