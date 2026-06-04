@@ -11,4 +11,4 @@ dvc-s3
 matplotlib==3.10.7
 opencv-python==4.9.0.80
 numpy==1.26.4
-tensorflow==2.20.0
+tensorflow==2.15.0
