@@ -143,14 +143,23 @@ def detect_drift(cfg: DictConfig):
     torchdrift.utils.fit(reference_loader, feature_extractor, detector)
 
     # Run on drifted data
-    scale_score = detector(torchdrift.utils.extract_features(scale_loader, feature_extractor))
-    color_score = detector(torchdrift.utils.extract_features(color_loader, feature_extractor))
+    def extract_features(loader, extractor, device):
+        features = []
+        with torch.no_grad():
+            for imgs, _ in loader:
+                imgs = imgs.to(device)
+                out = extractor(imgs)
+                features.append(out.view(out.size(0), -1))
+        return torch.cat(features)
 
-    scale_p_val = detector.compute_p_value(scale_score)
-    color_p_val = detector.compute_p_value(color_score)
+    scale_features = extract_features(scale_loader, feature_extractor, device)
+    color_features = extract_features(color_loader, feature_extractor, device)
 
-    print(f"Scale drift p-value: {scale_p_val:.4f}")
-    print(f"Color drift p-value: {color_p_val:.4f}")
+    scale_score = detector(scale_features)
+    color_score = detector(color_features)
+
+    scale_p_val = detector.compute_p_value(scale_features)
+    color_p_val = detector.compute_p_value(color_features)
 
 
     # 7. Log to MLflow
