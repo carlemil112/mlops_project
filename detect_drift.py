@@ -151,7 +151,7 @@ def detect_drift(cfg: DictConfig):
                     imgs = imgs.mean(dim=1, keepdim=True)  # RGB → grayscale
                 imgs = imgs.to(device)
                 out = extractor(imgs)
-                features.append(out.view(out.size(0), -1))
+                features.append(out.flatten(start_dim=1))
         return torch.cat(features)
 
     scale_features = extract_features(scale_loader, feature_extractor, device)
