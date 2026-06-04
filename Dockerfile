@@ -8,6 +8,6 @@ RUN apt-get update && apt-get install -y python3.11 python3.11-distutils curl &&
 
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install --upgrade pip && pip install -r requirements.txt
+RUN pip install --upgrade pip setuptools && pip install -r requirements.txt
 COPY . .
 CMD ["python", "-m", "pytest", "-q"]
