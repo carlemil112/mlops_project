@@ -135,10 +135,12 @@ def detect_drift(cfg: DictConfig):
     color_loader = DataLoader(color_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
     # 6. Kør TorchDrift med rettet Feature Extractor
-    # VIGTIGT: Vi tilføjer nn.Flatten() til sidst for at undgå dimension-fejlen i MMD!
+    # Vi tilføjer AdaptiveAvgPool2d for at tvinge output til at have samme dimension, 
+    # uanset om input er 48x48 eller 96x96.
     feature_extractor = torch.nn.Sequential(
         *list(model.children())[:-1],
-        torch.nn.Flatten()
+        torch.nn.AdaptiveAvgPool2d((1, 1)), # Reducerer (B, C, H, W) -> (B, C, 1, 1)
+        torch.nn.Flatten()                  # Fladgør til (B, C)
     )
     feature_extractor.to(device)
     feature_extractor.eval()
