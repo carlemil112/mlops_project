@@ -171,7 +171,7 @@ def train(cfg: DictConfig):
 
     # Kontroller learning_rate dynamisk
     reduce_lr = ReduceLROnPlateau(
-        optimizer, mode="min", factor=0.2, patience=5, min_lr=0.00001, verbose=True
+        optimizer, mode="min", factor=0.2, patience=5, min_lr=0.00001
     )
 
     # Output mappe
