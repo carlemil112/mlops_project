@@ -159,5 +159,5 @@ def detect_drift(cfg: DictConfig):
         mlflow.set_tag("drift_detection", "torchdrift_mmd")
 
 
-    if __name__ == "__main__":
-        detect_drift()
+    
+if __name__ == "__main__": detect_drift()
