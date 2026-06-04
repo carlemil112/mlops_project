@@ -143,17 +143,19 @@ def detect_drift(cfg: DictConfig):
     torchdrift.utils.fit(reference_loader, feature_extractor, detector)
 
     # Run on drifted data
-    def extract_features(loader, extractor, device):
+    def extract_features(loader, extractor, device, to_gray=False):
         features = []
         with torch.no_grad():
             for imgs, _ in loader:
+                if to_gray:
+                    imgs = imgs.mean(dim=1, keepdim=True)  # RGB → grayscale
                 imgs = imgs.to(device)
                 out = extractor(imgs)
                 features.append(out.view(out.size(0), -1))
         return torch.cat(features)
 
     scale_features = extract_features(scale_loader, feature_extractor, device)
-    color_features = extract_features(color_loader, feature_extractor, device)
+    color_features = extract_features(color_loader, feature_extractor, device, to_gray=True)
 
     scale_score = detector(scale_features)
     color_score = detector(color_features)
