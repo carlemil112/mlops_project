@@ -30,6 +30,17 @@ print(f"sys.argv before filter: {sys.argv}", flush=True)
 sys.argv = [a for a in sys.argv if not a.startswith("--local_rank")]
 print(f"sys.argv after filter: {sys.argv}", flush=True)
 
+
+sys.argv = [a for a in sys.argv if not a.startswith("--local_rank")]
+
+print(f"CWD: {os.getcwd()}", flush=True)
+print(f"configs exists: {os.path.exists('configs')}", flush=True)
+print(f"files in CWD: {os.listdir('.')}", flush=True)
+
+@hydra.main(version_base=None, config_path="configs", config_name="config")
+def train(cfg: DictConfig):
+    ...
+
 @hydra.main(version_base=None, config_path="configs", config_name="config")
 def train(cfg: DictConfig):
     print("=== TRAIN FUNCTION CALLED ===", flush=True)
