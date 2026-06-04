@@ -61,9 +61,6 @@ def detect_drift(cfg: DictConfig):
     DATASET_STD = cfg.train_script.data.dataset_std
     SEED = cfg.train_script.seed
         
-    # Model path
-    out_dir = os.path.join("outputs", "fer_run")
-    best_model_path = os.path.join(out_dir, "best_emotion_model.pt")
 
 
     # 2. Define transforms
@@ -81,7 +78,7 @@ def detect_drift(cfg: DictConfig):
         [
             transforms.Resize((IMG_SIZE * 2, IMG_SIZE * 2)), # Double size to simulate scenario with larger input image
             transforms.ToTensor(),
-            transforms.Normalize(transforms.Normalize(mean=[DATASET_MEAN], std=[DATASET_STD])),
+            transforms.Normalize(mean=[DATASET_MEAN], std=[DATASET_STD]),
                
         ])
     drift_transform_color = transforms.Compose(
@@ -108,7 +105,15 @@ def detect_drift(cfg: DictConfig):
     )
 
     # 4. Load model
-    torch.load() # VENTER TIL AT JEG ER SIKKER PÅ MODEL PATH FRA MLFLOW
+    local_path = mlflow.artifacts.download_artifacts(
+    "mlflow-artifacts:/27/b19b0326c40b4873b288d81a9fc6e28e/artifacts/checkpoints/best_emotion_model.pt"
+)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = FERModel(num_classes=reference_dataset.num_classes)
+    model.load_state_dict(torch.load(local_path, map_location=device))
+    model.to(device)
+    model.eval()
+    
 
 
     # 5. Lav driftede billeder
@@ -119,9 +124,40 @@ def detect_drift(cfg: DictConfig):
     scale_loader = DataLoader(scale_dataset, batch_size=BATCH_SIZE)
     color_loader = DataLoader(color_dataset, batch_size=BATCH_SIZE)
 
+
     # 6. Kør TorchDrift
 
+    reference_loader = DataLoader(test_subset, batch_size=BATCH_SIZE)
+
+    # Feature extractor (remove last layer)
+    feature_extractor = torch.nn.Sequential(*list(model.children())[:-1])
+    feature_extractor.to(device)
+    feature_extractor.eval()
+
+    # Fit detector to reference data
+    detector = torchdrift.detectors.KernelMMDDriftDetector()
+    torchdrift.utils.fit(reference_loader, feature_extractor, detector, n_batches=10)
+
+    # Run on drifted data
+    scale_score = detector(torchdrift.utils.extract_features(scale_loader, feature_extractor))
+    color_score = detector(torchdrift.utils.extract_features(color_loader, feature_extractor))
+
+    scale_p_val = detector.compute_p_value(scale_score)
+    color_p_val = detector.compute_p_value(color_score)
+
+    print(f"Scale drift p-value: {scale_p_val:.4f}")
+    print(f"Color drift p-value: {color_p_val:.4f}")
 
 
-    # 7. Log til MLflow
-    
+    # 7. Log to MLflow
+
+    with mlflow.start_run():
+        mlflow.log_metric("scale_drift_score", scale_score.item())
+        mlflow.log_metric("color_drift_score", color_score.item())
+        mlflow.log_metric("scale_drift_p_value", scale_p_val.item())
+        mlflow.log_metric("color_drift_p_value", color_p_val.item())
+        mlflow.set_tag("drift_detection", "torchdrift_mmd")
+
+
+    if __name__ == "__main__":
+        detect_drift()

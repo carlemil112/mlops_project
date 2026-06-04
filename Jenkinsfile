@@ -108,6 +108,20 @@ parameters {
             }
         }
 
+        stage('Detect Drift') {
+            when { expression { return params.RUN_EVALUATION } }
+            steps {
+                sh '''
+                    docker run --rm \
+                        -v "$PWD:/app" \
+                        -w /app \
+                        -e MLFLOW_TRACKING_URI="${MLFLOW_TRACKING_URI}" \
+                        -e MLFLOW_EXPERIMENT_NAME="${MLFLOW_EXPERIMENT_NAME}" \
+                        mlops_project_tests:$BUILD_NUMBER \
+                        python detect_drift.py
+                '''
+            }
+        }
 
 
 
