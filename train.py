@@ -139,7 +139,15 @@ def train(cfg: DictConfig):
 
     # Carbontracker implementation before training
     try:
-        tracker = CarbonTracker(cfg.script.epochs)
+        class DummyTracker:
+            def epoch_start(self): pass
+            def epoch_end(self): pass
+            def stop(self): pass
+
+        try:
+            tracker = CarbonTracker(cfg.script.epochs, log_to_file=False)
+        except Exception:
+            tracker = DummyTracker()
     except Exception as e:
         print(f"CarbonTracker init fejlede: {e}, fortsætter uden tracking", flush=True)
         tracker = None
