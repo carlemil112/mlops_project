@@ -54,12 +54,12 @@ def detect_drift(cfg: DictConfig):
     mlflow.set_tracking_uri(cfg.mlflow.tracking_uri)
     mlflow.set_experiment(cfg.mlflow.name)
     # Config loading with hydra
-    TRAIN_DIR = cfg.train_script.data.data_path  # Balanced data
-    IMG_SIZE = cfg.train_script.data.image_size  # Standard size image
-    BATCH_SIZE = cfg.train_script.training.batch_size  # Amount if images pr. batch
-    DATASET_MEAN = cfg.train_script.data.dataset_mean
-    DATASET_STD = cfg.train_script.data.dataset_std
-    SEED = cfg.train_script.seed
+    TRAIN_DIR = cfg.paths.data_path          # Balanced data
+    IMG_SIZE = cfg.script.img_size           # Standard size image
+    BATCH_SIZE = cfg.script.batch_size       # Amount if images pr. batch
+    DATASET_MEAN = cfg.script.dataset_mean
+    DATASET_STD = cfg.script.dataset_std
+    SEED = cfg.seed
         
 
 
