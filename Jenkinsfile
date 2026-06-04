@@ -81,8 +81,6 @@ parameters {
             when { expression { return params.RUN_TRAINING } }
             steps {
                 sh '''
-                    echo "=== CUDA CHECK ==="
-                    grep CUDA Jenkinsfile || echo "CUDA IKKE FUNDET I JENKINSFILE"
                     mkdir -p outputs
                     GIT_COMMIT=$(git rev-parse HEAD)
                     GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD)

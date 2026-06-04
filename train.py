@@ -63,7 +63,7 @@ class FERDataset(Dataset):
 @hydra.main(version_base=None, config_path="configs", config_name="config")
 def train(cfg: DictConfig):
     # MLFlow configuration
-    mlflow.set_tracking_uri(cfg.mlflow.tracking_uri)
+    mlflow.set_tracking_uri("http://172.24.198.42:5050")
     mlflow.set_experiment(cfg.mlflow.name)
     # Config loading with hydra
 
