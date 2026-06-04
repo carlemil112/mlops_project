@@ -106,7 +106,7 @@ void printJSON(float* output) {
 int main() {
     loadModel("emotion_model.tflite");
     
-    // Load og preprocess alle billeder
+    // Load og preprocess all images
     std::vector<cv::String> filenames;
     cv::glob("images/*.jpg", filenames);
     
@@ -115,10 +115,10 @@ int main() {
         images.push_back(preprocessImage(filenames[i]));
     }
     
-    // Kør batch inference via runInference()
+    // Run batch inference via runInference()
     std::vector<float*> outputs = runInference("emotion_model.tflite", images);
     
-    // Print JSON for hvert billede
+    // Print JSON for each image
     for (int i = 0; i < filenames.size(); i++) {
         std::cout << "Image: " << filenames[i] << std::endl;
         printJSON(outputs[i]);

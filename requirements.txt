@@ -5,6 +5,7 @@ dvc
 pytest
 torch
 torchvision
+torchdrift
 mlflow==2.14.3
 dvc-s3
 matplotlib==3.10.7
