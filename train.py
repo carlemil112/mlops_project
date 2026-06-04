@@ -138,7 +138,11 @@ def train(cfg: DictConfig):
     )
 
     # Carbontracker implementation before training
-    tracker = CarbonTracker(cfg.script.epochs)
+    try:
+        tracker = CarbonTracker(cfg.script.epochs)
+    except Exception as e:
+        print(f"CarbonTracker init fejlede: {e}, fortsætter uden tracking", flush=True)
+        tracker = None
 
     # Training
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -197,6 +201,27 @@ def train(cfg: DictConfig):
 
         # Fit model to training data
         print("Starter træning...")
+
+        # Før epoch loop:
+        if tracker:
+            try:
+                tracker.epoch_start()
+            except Exception:
+                pass
+
+        # Efter epoch:
+        if tracker:
+            try:
+                tracker.epoch_end()
+            except Exception:
+                pass
+
+        # Efter loop:
+        if tracker:
+            try:
+                tracker.stop()
+            except Exception:
+                pass
 
         for epoch in range(cfg.script.epochs):
             # initiating carbontracker
