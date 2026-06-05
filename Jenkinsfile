@@ -59,10 +59,10 @@ parameters {
                 sh '''
                     GIT_COMMIT=$(git rev-parse HEAD)
                     SHORT_SHA=$(echo "$GIT_COMMIT" | cut -c1-7)
-                    
+
                     docker tag mlops_project_tests:$BUILD_NUMBER $REGISTRY_URL/rasmil112:$SHORT_SHA
                     docker tag mlops_project_tests:$BUILD_NUMBER $REGISTRY_URL/rasmil112:latest
-                    
+
                     docker push $REGISTRY_URL/rasmil112:$SHORT_SHA
                     docker push $REGISTRY_URL/rasmil112:latest
                 '''
@@ -93,6 +93,10 @@ parameters {
                     -w /app \
                     mlops_project_tests:$BUILD_NUMBER \
                     dvc pull -v
+
+                    curl -X POST http://172.24.198.42:8000/metrics/stage \
+                        -H "Content-Type: application/json" \
+                        -d '{"stage":"dvc_pull","success":1}' || true
                 '''
             }
             }
@@ -119,28 +123,18 @@ parameters {
                         -e BUILD_URL="${BUILD_URL}" \
                         mlops_project_tests:$BUILD_NUMBER \
                         deepspeed --num_gpus=1 train.py
+
+
+
+                        curl -X POST http://172.24.198.42:8000/metrics/stage \
+                            -H "Content-Type: application/json" \
+                            -d '{"stage":"training","success":1}' || true
                 '''
             }
             post {
                 always {
                     archiveArtifacts artifacts: 'outputs/**', fingerprint: true, allowEmptyArchive: true
                 }
-            }
-        }
-        
-        stage('Evaluate Model') {
-            when { expression { return params.RUN_EVALUATION } }
-            steps {
-                sh '''
-                    MLFLOW_RUN_ID=$(cat outputs/fer_run/mlflow_run_id.txt)
-
-                    docker run --rm \
-                        -v "$PWD:/app" \
-                        -w /app \
-                        -e MLFLOW_TRACKING_URI="${MLFLOW_TRACKING_URI}" \
-                        mlops_project_tests:$BUILD_NUMBER \
-                        python evaluate.py --run-id "$MLFLOW_RUN_ID" --config-dir /app/configs
-                '''
             }
         }
 

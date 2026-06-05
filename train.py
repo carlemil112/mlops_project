@@ -25,6 +25,9 @@ import mlflow
 import mlflow.pytorch
 import sys
 
+import requests
+
+
 # Filter out --local_rank argument injected by DeepSpeed before Hydra sees it
 print(f"sys.argv before filter: {sys.argv}", flush=True)
 sys.argv = [a for a in sys.argv if not a.startswith("--local_rank")]
@@ -37,9 +40,10 @@ print(f"CWD: {os.getcwd()}", flush=True)
 print(f"configs exists: {os.path.exists('configs')}", flush=True)
 print(f"files in CWD: {os.listdir('.')}", flush=True)
 
+"""
 @hydra.main(version_base=None, config_path="configs", config_name="config")
-def train(cfg: DictConfig):
-    ...
+def train(cfg: DictConfig): ...
+
 
 @hydra.main(version_base=None, config_path="configs", config_name="config")
 def train(cfg: DictConfig):
@@ -47,6 +51,7 @@ def train(cfg: DictConfig):
     print(f"CWD: {os.getcwd()}", flush=True)
     print(f"cfg.mlflow: {cfg.mlflow}", flush=True)
 
+"""
 # Dataset
 
 
@@ -139,10 +144,16 @@ def train(cfg: DictConfig):
 
     # Carbontracker implementation before training
     try:
+
         class DummyTracker:
-            def epoch_start(self): pass
-            def epoch_end(self): pass
-            def stop(self): pass
+            def epoch_start(self):
+                pass
+
+            def epoch_end(self):
+                pass
+
+            def stop(self):
+                pass
 
         try:
             tracker = CarbonTracker(cfg.script.epochs, log_to_file=False)
@@ -171,8 +182,11 @@ def train(cfg: DictConfig):
 
     # Kontroller learning_rate dynamisk
     reduce_lr = ReduceLROnPlateau(
-    model_engine.optimizer.optimizer,  # ← den indpakkede originale
-    mode="min", factor=0.2, patience=5, min_lr=0.00001
+        model_engine.optimizer.optimizer,  # ← den indpakkede originale
+        mode="min",
+        factor=0.2,
+        patience=5,
+        min_lr=0.00001,
     )
 
     # Output mappe
@@ -305,6 +319,21 @@ def train(cfg: DictConfig):
                 step=epoch,
             )
 
+            try:
+                requests.post(
+                    "http://172.24.198.42:8000/metrics/training",
+                    json={
+                        "epoch": epoch + 1,
+                        "train_loss": train_loss,
+                        "train_acc": train_acc,
+                        "val_loss": val_loss,
+                        "val_acc": val_acc,
+                    },
+                    timeout=2,
+                )
+            except requests.RequestException:
+                pass
+
             # Find and save best model
             if val_acc > best_val_acc:
                 best_val_acc = val_acc
@@ -336,6 +365,7 @@ def train(cfg: DictConfig):
         mlflow.log_artifact(best_model_path, artifact_path="checkpoints")
         # Save weights for a short while
         import copy
+
         fresh_model = copy.deepcopy(model)
         fresh_model.load_state_dict(torch.load(best_model_path))
         fresh_model = fresh_model.cpu()  # move to CPU
@@ -343,9 +373,8 @@ def train(cfg: DictConfig):
         mlflow.pytorch.log_model(
             fresh_model,
             artifact_path="model",
-            registered_model_name="fer_emotion_model"
-)
-
+            registered_model_name="fer_emotion_model",
+        )
 
     # Resultater visualisering
 
@@ -377,11 +406,13 @@ def plot_training_history(history, plot_path):
     plt.savefig(plot_path)
     plt.close()
 
+
 if __name__ == "__main__":
     try:
         train()
     except SystemExit as e:
         print(f"SystemExit: {e}", flush=True)
-    except Exception as e:
+    except Exception:
         import traceback
+
         traceback.print_exc()
