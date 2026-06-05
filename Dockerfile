@@ -24,7 +24,6 @@ RUN wget -q https://github.com/tensorflow/tensorflow/archive/refs/tags/v2.13.0.z
     rm v2.13.0.zip && \
     cmake -B tensorflow-2.13.0/tflite_build \
         tensorflow-2.13.0/tensorflow/lite \
-        -DTFLITE_ENABLE_INSTALL=ON \
         -DCMAKE_BUILD_TYPE=Release && \
     cmake --build tensorflow-2.13.0/tflite_build -j$(nproc)
  
