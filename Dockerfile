@@ -1,5 +1,8 @@
 FROM nvidia/cuda:12.1.0-devel-ubuntu22.04
- 
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=Europe/Copenhagen
+
 RUN apt-get update && apt-get install -y \
     python3.11 python3.11-distutils curl \
     cmake g++ \
