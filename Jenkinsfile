@@ -52,6 +52,26 @@ parameters {
             }
         }
 
+
+        // Docker image Registry push
+        stage('Push Docker Image') {
+            steps {
+                sh '''
+                    GIT_COMMIT=$(git rev-parse HEAD)
+                    SHORT_SHA=$(echo "$GIT_COMMIT" | cut -c1-7)
+                    
+                    docker tag mlops_project_tests:$BUILD_NUMBER $REGISTRY_URL/rasmil112:$SHORT_SHA
+                    docker tag mlops_project_tests:$BUILD_NUMBER $REGISTRY_URL/rasmil112:latest
+                    
+                    docker push $REGISTRY_URL/rasmil112:$SHORT_SHA
+                    docker push $REGISTRY_URL/rasmil112:latest
+                '''
+            }
+        }
+
+
+
+
         stage('Run Unit Tests (pytest)') {
             steps {
                 sh 'docker run --rm mlops_project_tests:$BUILD_NUMBER python -m pytest -q'

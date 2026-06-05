@@ -194,6 +194,7 @@ def train(cfg: DictConfig):
                 "jenkins.build_number": os.getenv("BUILD_NUMBER", ""),
                 "jenkins.build_url": os.getenv("BUILD_URL", ""),
                 "data.version": os.getenv("DATA_VERSION", ""),
+                "docker_image": f"{os.getenv('REGISTRY_URL', '')}/rasmil112:{os.getenv('GIT_COMMIT', '')[:7]}",
             }
         )
 
