@@ -326,11 +326,17 @@ def train(cfg: DictConfig):
 
         mlflow.log_artifact(plot_path, artifact_path="plots")
         mlflow.log_artifact(best_model_path, artifact_path="checkpoints")
+        # Save weights for a short while
+        import copy
+        fresh_model = copy.deepcopy(model)
+        fresh_model.load_state_dict(torch.load(best_model_path))
+        fresh_model = fresh_model.cpu()  # move to CPU
+
         mlflow.pytorch.log_model(
-            model,
+            fresh_model,
             artifact_path="model",
             registered_model_name="fer_emotion_model"
-        )
+)
 
 
     # Resultater visualisering
