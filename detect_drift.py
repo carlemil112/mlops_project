@@ -9,6 +9,9 @@ import hydra
 from omegaconf import DictConfig
 from model.fer_model import FERModel
 
+import requests
+
+
 class FERDataset(Dataset):
     def __init__(self, root_dir, transform=None, mode="L"):
         self.samples = []
@@ -40,32 +43,34 @@ class FERDataset(Dataset):
         return img, label
 
 
-def extract_features_and_score(loader, feature_extractor, detector, device, is_color_rgb=False):
+def extract_features_and_score(
+    loader, feature_extractor, detector, device, is_color_rgb=False
+):
     """
-    Hjælpefunktion til at trække features ud fra en loader og beregne 
+    Hjælpefunktion til at trække features ud fra en loader og beregne
     drift score + p-værdi via det fittede detector-objekt.
     """
     feature_extractor.eval()
     all_features = []
-    
+
     with torch.no_grad():
         for imgs, _ in loader:
             imgs = imgs.to(device)
-            
+
             # Hvis loaderen spytter RGB ud (Scenario 2), konverterer vi til grayscale her batch-vis
             if is_color_rgb:
                 imgs = imgs.mean(dim=1, keepdim=True)
-                
+
             features = feature_extractor(imgs)
             all_features.append(features.cpu())
-            
+
     # Saml alle batches til én 2D tensor: (Antal_samples, Feature_dimensioner)
     test_features = torch.cat(all_features, dim=0)
-    
+
     # Beregn MMD score og P-værdi
     drift_score = detector(test_features)
     p_value = detector.compute_p_value(drift_score)
-    
+
     return drift_score.item(), p_value.item()
 
 
@@ -74,36 +79,48 @@ def detect_drift(cfg: DictConfig):
     # 1. Load config parameters
     mlflow.set_tracking_uri(cfg.mlflow.tracking_uri)
     mlflow.set_experiment(cfg.mlflow.name)
-    
-    TRAIN_DIR = cfg.paths.data_path          
-    IMG_SIZE = cfg.script.img_size           
-    BATCH_SIZE = cfg.script.batch_size       
-    DATASET_MEAN = cfg.script.dataset_mean
-    DATASET_STD = cfg.script.dataset_std
-    SEED = cfg.seed
+    # Config loading with hydra
+    TRAIN_DIR = cfg.train_script.data.data_path  # Balanced data
+    IMG_SIZE = cfg.train_script.data.image_size  # Standard size image
+    BATCH_SIZE = cfg.train_script.training.batch_size  # Amount if images pr. batch
+    DATASET_MEAN = cfg.train_script.data.dataset_mean
+    DATASET_STD = cfg.train_script.data.dataset_std
+    SEED = cfg.train_script.seed
 
     # 2. Define transforms
-    reference_transform = transforms.Compose([
-        transforms.Resize((IMG_SIZE, IMG_SIZE)),  
-        transforms.ToTensor(),  
-        transforms.Normalize(mean=[DATASET_MEAN], std=[DATASET_STD]),
-    ])
-    
-    drift_transform_scale = transforms.Compose([
-        # Scenario 1: Dobbelt størrelse (96x96 hvis IMG_SIZE=48)
-        transforms.Resize((IMG_SIZE * 2, IMG_SIZE * 2)), 
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[DATASET_MEAN], std=[DATASET_STD]),
-    ])
-    
-    drift_transform_color = transforms.Compose([
-        # Scenario 2: RGB load, normaliseret på 3 kanaler
-        transforms.Resize((IMG_SIZE, IMG_SIZE)),  
-        transforms.ToTensor(),                    
-        transforms.Normalize(mean=[DATASET_MEAN]*3, std=[DATASET_STD]*3),
-    ])
-
+    reference_transform = transforms.Compose(
+        [
+            transforms.Resize((IMG_SIZE, IMG_SIZE)),  # target_size=(IMG_SIZE, IMG_SIZE)
+            transforms.ToTensor(),  # [0,255] → [0.0, 1.0] + tensor
+            transforms.Normalize(
+                mean=[DATASET_MEAN],
+                std=[DATASET_STD],  # (pixel - mean) / std
+            ),
+        ]
+    )
+    drift_transform_scale = transforms.Compose(
+        [
+            transforms.Resize(
+                (IMG_SIZE * 2, IMG_SIZE * 2)
+            ),  # Double size to simulate scenario with larger input image
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[DATASET_MEAN], std=[DATASET_STD]),
+        ]
+    )
+    drift_transform_color = transforms.Compose(
+        [
+            transforms.Resize((IMG_SIZE, IMG_SIZE)),  # Same size
+            transforms.ToTensor(),  # 3 channels automatically
+            transforms.Normalize(
+                mean=[DATASET_MEAN, DATASET_MEAN, DATASET_MEAN],
+                std=[DATASET_STD, DATASET_STD, DATASET_STD],
+            ),
+        ]
+    )
     # 3. Load dataset + split 80/20
+
+    # Manual loading of seed, to make sure the same images are used as input to functions
+
     reference_dataset = FERDataset(TRAIN_DIR, transform=reference_transform, mode="L")
 
     val_size = int(0.2 * len(reference_dataset))
@@ -112,9 +129,9 @@ def detect_drift(cfg: DictConfig):
     _, test_subset = random_split(
         reference_dataset,
         [train_size, val_size],
-        generator=torch.Generator().manual_seed(SEED)
+        generator=torch.Generator().manual_seed(SEED),
     )
-    
+
     reference_loader = DataLoader(test_subset, batch_size=BATCH_SIZE, shuffle=False)
 
     # 4. Load model
@@ -130,18 +147,16 @@ def detect_drift(cfg: DictConfig):
     # 5. Lav driftede loaders
     scale_dataset = FERDataset(TRAIN_DIR, drift_transform_scale, mode="L")
     color_dataset = FERDataset(TRAIN_DIR, drift_transform_color, mode="RGB")
-    
-    scale_loader = DataLoader(scale_dataset, batch_size=BATCH_SIZE, shuffle=False)
-    color_loader = DataLoader(color_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
-# 6. Kør TorchDrift (Manuel og stabil tilgang)
+    scale_loader = DataLoader(scale_dataset, batch_size=BATCH_SIZE)
+    color_loader = DataLoader(color_dataset, batch_size=BATCH_SIZE)
 
-    # Vi bygger vores feature extractor med AdaptiveAvgPool2d for at håndtere 96x96 billeder
-    feature_extractor = torch.nn.Sequential(
-        *list(model.children())[:-1],
-        torch.nn.AdaptiveAvgPool2d((1, 1)),
-        torch.nn.Flatten()
-    )
+    # 6. Kør TorchDrift
+
+    reference_loader = DataLoader(test_subset, batch_size=BATCH_SIZE)
+
+    # Feature extractor (remove last layer)
+    feature_extractor = torch.nn.Sequential(*list(model.children())[:-1])
     feature_extractor.to(device)
     feature_extractor.eval()
 
@@ -152,24 +167,30 @@ def detect_drift(cfg: DictConfig):
         for imgs, _ in reference_loader:
             imgs = imgs.to(device)
             feats = feature_extractor(imgs)
-            ref_features_list.append(feats.cpu()) # Gem på CPU for at spare VRAM
-            
+            ref_features_list.append(feats.cpu())  # Gem på CPU for at spare VRAM
+
     # Saml til én stor 2D-tensor: (Antal_samples, Feature_dim)
-    reference_features = torch.cat(ref_features_list, dim=0)
+    # reference_features = torch.cat(ref_features_list, dim=0)
 
     # 6b. KONFIGURÉR OG FIT DETECTOR DIREKTE
     detector = torchdrift.detectors.KernelMMDDriftDetector()
-    
-    # Her går vi uden om torchdrift.utils.fit og kalder .fit direkte på tensoren!
-    # Dette sikrer, at detector.base_outputs (x) bliver sat korrekt til en 2D-tensor.
-    detector.fit(x=reference_features)
+    torchdrift.utils.fit(reference_loader, feature_extractor, detector, n_batches=10)
 
-
-    # 6c. EVALUERING AF SCENARIER
-    # Scenario 1 (Scale)
-    scale_score, scale_p_val = extract_features_and_score(
-        scale_loader, feature_extractor, detector, device, is_color_rgb=False
+    # Run on drifted data
+    scale_score = detector(
+        torchdrift.utils.extract_features(scale_loader, feature_extractor)
     )
+    color_score = detector(
+        torchdrift.utils.extract_features(color_loader, feature_extractor)
+    )
+
+    scale_p_val = detector.compute_p_value(scale_score)
+    color_p_val = detector.compute_p_value(color_score)
+
+    print(f"Scale drift p-value: {scale_p_val:.4f}")
+    print(f"Color drift p-value: {color_p_val:.4f}")
+
+    # 7. Log to MLflow
 
     # Scenario 2 (Color)
     color_score, color_p_val = extract_features_and_score(
@@ -180,14 +201,28 @@ def detect_drift(cfg: DictConfig):
     with mlflow.start_run():
         mlflow.log_metric("scale_drift_score", scale_score)
         mlflow.log_metric("scale_drift_p_value", scale_p_val)
-        
+
         mlflow.log_metric("color_drift_score", color_score)
         mlflow.log_metric("color_drift_p_value", color_p_val)
-        
+
         mlflow.set_tag("drift_detection", "torchdrift_mmd")
-        
+
     print(f"Scenario 1 (Scale) - Score: {scale_score:.4f}, P-Value: {scale_p_val:.4f}")
     print(f"Scenario 2 (Color) - Score: {color_score:.4f}, P-Value: {color_p_val:.4f}")
 
-if __name__ == "__main__": 
-    detect_drift()
+    try:
+        requests.post(
+            "http://172.24.198.42:8000/metrics/drift",
+            json={
+                "scale_drift_score": scale_score.item(),
+                "color_drift_score": color_score.item(),
+                "scale_drift_p_value": scale_p_val.item(),
+                "color_drift_p_value": color_p_val.item(),
+            },
+            timeout=2,
+        )
+    except requests.RequestException:
+        pass
+
+    if __name__ == "__main__":
+        detect_drift()

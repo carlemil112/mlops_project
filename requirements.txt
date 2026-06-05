@@ -16,3 +16,4 @@ deepspeed==0.12.6
 setuptools==69.5.1
 pytest-cov
 carbontracker
+requests
