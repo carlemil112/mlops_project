@@ -17,3 +17,5 @@ setuptools==69.5.1
 pytest-cov
 carbontracker
 requests
+onnx
+onnx2tf
