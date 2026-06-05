@@ -74,7 +74,7 @@ parameters {
 
         stage('Run Unit Tests (pytest)') {
             steps {
-                sh 'docker run --rm mlops_project_tests:$BUILD_NUMBER python -m pytest -q'
+                sh 'docker run --rm mlops_project_tests:$BUILD_NUMBER python -m pytest -q --cov=. --cov-report=term-missing'
             }
         }
 
