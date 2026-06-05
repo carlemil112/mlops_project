@@ -31,12 +31,11 @@ COPY . .
  
 # Compile inference.cpp against the TFLite we just built
 RUN g++ -O2 -std=c++17 -o inference inference.cpp \
-    -I tensorflow-2.13.0 \
-    -I tensorflow-2.13.0/tflite_build \
-    -L tensorflow-2.13.0/tflite_build \
-    -ltensorflow-lite \
+    -I /usr/local/lib/python3.11/dist-packages/tensorflow/include \
+    -L /usr/local/lib/python3.11/dist-packages/tensorflow \
+    -l:libtensorflow_lite_c.so \
     $(pkg-config --cflags --libs opencv4) \
-    -Wl,-rpath,/app/tensorflow-2.13.0/tflite_build
+    -Wl,-rpath,/usr/local/lib/python3.11/dist-packages/tensorflow
  
 CMD ["python", "-m", "pytest", "-q"]
  
