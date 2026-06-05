@@ -1,0 +1,40 @@
+import torch
+import torch.onnx as torch_onnx
+import onnx
+import subprocess
+import sys
+import os
+
+from train import FERModel
+
+# path from best model
+model_path = "outputs/fer_run/best_emotion_model.pt"
+
+# Load PYTORCH model - NOT keras :D
+model = FERModel(7)
+model.load_state_dict(torch.load(model_path))
+model.eval()
+
+# Export to ONNX
+dummy_input = torch.zeros(
+    (1, 1, 48, 48)
+)  # Probably needs dummy input to see if it works first? I'm guessing the bigger model would take longer
+onnx.export(model, dummy_input, "emotion_model.onnx")
+
+# Convert ONNX to TensorFlow
+onnx_model = onnx.load("emotion_model.onnx")
+tf_model = onnx_tf.backend.prepare(onnx_model)
+tf_model.export_graph("emotion_model_tf")
+
+
+# Dynamic range quantization with tf
+converter = tf.lite.TFLiteConverter.from_saved_model("emotion_model_tf")
+converter.optimizations = [tf.lite.Optimize.DEFAULT]
+
+
+# Convert from tf to tflite
+tflite_model = converter.convert()
+
+# Save .tflite file
+with open("emotion_model_quantized.tflite", "wb") as f:
+    f.write(tflite_model)

@@ -7,7 +7,6 @@ import sys
 import os
  
 from train import FERModel
- 
 MODEL_PATH = "outputs/fer_run/best_emotion_model.pt"
 ONNX_PATH = "emotion_model.onnx"
 TFLITE_PATH = "emotion_model.tflite"
@@ -70,3 +69,4 @@ if __name__ == "__main__":
  
     export_to_onnx(model)
     onnx_to_tflite()
+
