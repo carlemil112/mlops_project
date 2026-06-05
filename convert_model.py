@@ -1,19 +1,21 @@
- 
 import torch
 import torch.onnx as torch_onnx
-import onnx
 import subprocess
 import sys
 import os
- 
-from train import FERModel
+import shutil
+import tensorflow as tf
+
+from model.fer_model import FERModel
+
 MODEL_PATH = "outputs/fer_run/best_emotion_model.pt"
 ONNX_PATH = "emotion_model.onnx"
-TFLITE_PATH = "emotion_model.tflite"
+ONNX2TF_OUTPUT_DIR = "onnx2tf_output"
+TFLITE_PATH = "emotion_model_quantized.tflite"
 NUM_CLASSES = 7
 IMG_SIZE = 48
- 
- 
+
+
 def export_to_onnx(model):
     dummy_input = torch.zeros((1, 1, IMG_SIZE, IMG_SIZE))
     torch_onnx.export(
@@ -26,15 +28,22 @@ def export_to_onnx(model):
         opset_version=11,
     )
     print(f"Exported ONNX model to {ONNX_PATH}", flush=True)
- 
- 
-def onnx_to_tflite():
-    # onnx2tf converts directly from ONNX to TFLite without the onnx_tf mess
+
+
+def onnx_to_saved_model():
+    # onnx2tf converts ONNX to a TensorFlow SavedModel directory.
+    if os.path.exists(ONNX2TF_OUTPUT_DIR):
+        shutil.rmtree(ONNX2TF_OUTPUT_DIR)
+
     result = subprocess.run(
         [
-            sys.executable, "-m", "onnx2tf",
-            "-i", ONNX_PATH,
-            "-o", "onnx2tf_output",
+            sys.executable,
+            "-m",
+            "onnx2tf",
+            "-i",
+            ONNX_PATH,
+            "-o",
+            ONNX2TF_OUTPUT_DIR,
             "--non_verbose",
         ],
         capture_output=True,
@@ -43,30 +52,34 @@ def onnx_to_tflite():
     if result.returncode != 0:
         print(result.stderr, flush=True)
         raise RuntimeError(f"onnx2tf failed with exit code {result.returncode}")
- 
+
     print(result.stdout, flush=True)
- 
-    # onnx2tf outputs to a folder, find the tflite file and move it
-    tflite_candidates = [
-        f for f in os.listdir("onnx2tf_output") if f.endswith(".tflite")
-    ]
-    if not tflite_candidates:
-        raise FileNotFoundError("No .tflite file found in onnx2tf_output/")
- 
-    # prefer INT8 if available
-    int8 = [f for f in tflite_candidates if "int8" in f.lower()]
-    chosen = int8[0] if int8 else tflite_candidates[0]
-    os.rename(os.path.join("onnx2tf_output", chosen), TFLITE_PATH)
- 
+
+    saved_model_path = os.path.join(ONNX2TF_OUTPUT_DIR, "saved_model.pb")
+    if not os.path.exists(saved_model_path):
+        raise FileNotFoundError(f"Expected TensorFlow SavedModel at {saved_model_path}")
+
+
+def quantize_saved_model_to_tflite():
+    # Dynamic-range post-training quantization. This does not need calibration data.
+    converter = tf.lite.TFLiteConverter.from_saved_model(ONNX2TF_OUTPUT_DIR)
+    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    tflite_model = converter.convert()
+
+    with open(TFLITE_PATH, "wb") as file:
+        file.write(tflite_model)
+
     size_kb = os.path.getsize(TFLITE_PATH) / 1024
-    print(f"TFLite model saved to {TFLITE_PATH} ({size_kb:.1f} KB)", flush=True)
- 
- 
+    print(
+        f"Quantized TFLite model saved to {TFLITE_PATH} ({size_kb:.1f} KB)", flush=True
+    )
+
+
 if __name__ == "__main__":
     model = FERModel(NUM_CLASSES)
     model.load_state_dict(torch.load(MODEL_PATH, map_location="cpu"))
     model.eval()
- 
-    export_to_onnx(model)
-    onnx_to_tflite()
 
+    export_to_onnx(model)
+    onnx_to_saved_model()
+    quantize_saved_model_to_tflite()
