@@ -195,9 +195,17 @@ def train(cfg: DictConfig):
                 "jenkins.build_url": os.getenv("BUILD_URL", ""),
                 "data.version": os.getenv("DATA_VERSION", ""),
                 "docker_image": f"{os.getenv('REGISTRY_URL', '')}/rasmil112:{os.getenv('GIT_COMMIT', '')[:7]}",
+                
             }
+            
         )
 
+        # write run ID to file so Jenkins can pass it to evaluate.py
+        run_id = mlflow.active_run().info.run_id
+        with open("outputs/fer_run/mlflow_run_id.txt", "w") as f:
+            f.write(run_id)
+
+            
         mlflow.log_params(
             {
                 "train_dir": DATA_PATH,
