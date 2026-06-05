@@ -327,7 +327,7 @@ def train(cfg: DictConfig):
         mlflow.log_artifact(plot_path, artifact_path="plots")
         mlflow.log_artifact(best_model_path, artifact_path="checkpoints")
         mlflow.pytorch.log_model(
-            model,
+            model_engine.module,
             artifact_path="model",
             registered_model_name="fer_emotion_model"
         )
