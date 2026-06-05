@@ -156,14 +156,15 @@ parameters {
             when { expression { return params.RUN_EVALUATION } }
             steps {
                 sh '''
-                    MLFLOW_RUN_ID=$(cat outputs/fer_run/mlflow_run_id.txt)
+                    mkdir -p images
+                    find data/ -name "*.jpg" | head -100 | xargs -I{} cp {} images/
 
                     docker run --rm \
                         -v "$PWD:/app" \
                         -w /app \
                         -e MLFLOW_TRACKING_URI="${MLFLOW_TRACKING_URI}" \
                         mlops_project_tests:$BUILD_NUMBER \
-                        python evaluate.py --run-id "$MLFLOW_RUN_ID" --config-dir /app/configs
+                        sh -c "python convert_model.py && python run_inference.py"
                 '''
             }
         }
