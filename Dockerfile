@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y \
     cmake g++ \
     libopencv-dev \
     wget unzip flatbuffers-compiler \
+    git \
     && curl -sS https://bootstrap.pypa.io/get-pip.py | python3.11 \
     && ln -sf /usr/bin/python3.11 /usr/bin/python \
     && ln -sf /usr/bin/python3.11 /usr/bin/python3 \
