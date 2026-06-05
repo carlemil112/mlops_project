@@ -320,12 +320,18 @@ def train(cfg: DictConfig):
 
         tracker.stop()
 
-        # Plots + best model in MLflow
+        # Plots + best model + model registry in MLflow
         plot_path = os.path.join(out_dir, "training_results.png")
         plot_training_history(history, plot_path)
 
         mlflow.log_artifact(plot_path, artifact_path="plots")
         mlflow.log_artifact(best_model_path, artifact_path="checkpoints")
+        mlflow.pytorch.log_model(
+            model,
+            artifact_path="model",
+            registered_model_name="fer_emotion_model"
+        )
+
 
     # Resultater visualisering
 
