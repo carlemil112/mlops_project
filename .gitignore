@@ -27,3 +27,4 @@ FER-2013
 # DVC
 .dvc/cache
 /data
+.dvc/tmp/
