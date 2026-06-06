@@ -18,14 +18,6 @@ parameters {
     stages {
 
 
-        stage('Debug') {
-            steps {
-                sh 'echo "GIT_BRANCH=${GIT_BRANCH}"'
-                sh 'echo "BRANCH_NAME=${BRANCH_NAME}"'
-                sh 'git name-rev --name-only HEAD'
-            }
-        }
-
         stage('Clean Workspace') {
             steps {
                 cleanWs()
@@ -195,9 +187,8 @@ parameters {
         stage('Merge to Main') {
             when {
                 expression {
-                    def branch = sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
-                    echo "Current branch: ${branch}"
-                    return (branch == 'development') &&
+                    def branch = sh(script: 'git name-rev --name-only HEAD', returnStdout: true).trim()
+                    return branch.contains('development') &&
                         (currentBuild.result == null || currentBuild.result == 'SUCCESS')
                 }
             }
