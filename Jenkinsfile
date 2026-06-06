@@ -144,10 +144,11 @@ parameters {
         }
 
         stage('Testing gpu workers') {
-            steps{
+            steps {
                 sh'''
                 python -c "import torch; print('cuda devices:', torch.cuda.device_count())"
                 nvidia-smi
+                '''
             }
 
 
