@@ -77,7 +77,7 @@ parameters {
                     docker run --rm \
                         --gpus all \
                         mlops_project_tests:$BUILD_NUMBER \
-                        bash -lc 'python -c "import torch; print(\"cuda devices:\", torch.cuda.device_count())" && nvidia-smi'
+                        bash -lc "python -c 'import torch; print(\"cuda devices: {}\".format(torch.cuda.device_count()))' && nvidia-smi"
                 '''
             }
         }
