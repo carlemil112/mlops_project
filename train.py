@@ -5,8 +5,10 @@ from PIL import Image
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
+from torch.utils.data.distributed import DistributedSampler
 from torchvision import transforms
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+from contextlib import nullcontext
 
 from carbontracker.tracker import CarbonTracker
 
@@ -28,13 +30,39 @@ import sys
 import requests
 
 
+def _get_arg_value(args, name):
+    prefix = f"{name}="
+    for i, arg in enumerate(args):
+        if arg.startswith(prefix):
+            return arg.split("=", 1)[1]
+        if arg == name and i + 1 < len(args):
+            return args[i + 1]
+    return None
+
+
+def _strip_arg(args, name):
+    stripped_args = []
+    skip_next = False
+    for arg in args:
+        if skip_next:
+            skip_next = False
+            continue
+        if arg == name:
+            skip_next = True
+            continue
+        if arg.startswith(f"{name}="):
+            continue
+        stripped_args.append(arg)
+    return stripped_args
+
+
 # Filter out --local_rank argument injected by DeepSpeed before Hydra sees it
 print(f"sys.argv before filter: {sys.argv}", flush=True)
-sys.argv = [a for a in sys.argv if not a.startswith("--local_rank")]
+local_rank_arg = _get_arg_value(sys.argv, "--local_rank")
+if local_rank_arg is not None:
+    os.environ.setdefault("LOCAL_RANK", local_rank_arg)
+sys.argv = _strip_arg(sys.argv, "--local_rank")
 print(f"sys.argv after filter: {sys.argv}", flush=True)
-
-
-sys.argv = [a for a in sys.argv if not a.startswith("--local_rank")]
 
 print(f"CWD: {os.getcwd()}", flush=True)
 print(f"configs exists: {os.path.exists('configs')}", flush=True)
@@ -91,10 +119,17 @@ class FERDataset(Dataset):
 def train(cfg: DictConfig):
     # MLFlow configuration
     mlflow.set_tracking_uri("http://172.24.198.42:5050")
-    mlflow.set_experiment(cfg.mlflow.name)
     # Config loading with hydra
 
     SEED = cfg.seed
+    rank = int(os.environ.get("RANK", "0"))
+    world_size = int(os.environ.get("WORLD_SIZE", "1"))
+    local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+    is_distributed = world_size > 1
+    is_rank_zero = rank == 0
+    if is_rank_zero:
+        mlflow.set_experiment(cfg.mlflow.name)
+
     DATA_PATH = os.path.join(get_original_cwd(), cfg.paths.data_path)
     # Transforms
     # This function runs on every image hitting the model
@@ -124,11 +159,29 @@ def train(cfg: DictConfig):
         generator=torch.Generator().manual_seed(SEED),  # Reproducible split
     )
 
+    train_sampler = None
+    val_sampler = None
+    if is_distributed:
+        train_sampler = DistributedSampler(
+            train_dataset,
+            num_replicas=world_size,
+            rank=rank,
+            shuffle=True,
+            seed=SEED,
+        )
+        val_sampler = DistributedSampler(
+            val_dataset,
+            num_replicas=world_size,
+            rank=rank,
+            shuffle=False,
+        )
+
     # Generator for train data
     train_loader = DataLoader(
         train_dataset,
         batch_size=cfg.script.batch_size,
-        shuffle=True,
+        shuffle=train_sampler is None,
+        sampler=train_sampler,
         num_workers=cfg.dataloader.num_workers,
         pin_memory=True,
     )
@@ -138,6 +191,7 @@ def train(cfg: DictConfig):
         val_dataset,
         batch_size=cfg.dataloader.val_batch_size,
         shuffle=False,
+        sampler=val_sampler,
         num_workers=cfg.dataloader.num_workers,
         pin_memory=True,
     )
@@ -156,7 +210,10 @@ def train(cfg: DictConfig):
                 pass
 
         try:
-            tracker = CarbonTracker(cfg.script.epochs, log_to_file=False)
+            if is_rank_zero:
+                tracker = CarbonTracker(cfg.script.epochs, log_to_file=False)
+            else:
+                tracker = DummyTracker()
         except Exception:
             tracker = DummyTracker()
     except Exception as e:
@@ -164,7 +221,11 @@ def train(cfg: DictConfig):
         tracker = None
 
     # Training
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if torch.cuda.is_available():
+        torch.cuda.set_device(local_rank)
+        device = torch.device(f"cuda:{local_rank}")
+    else:
+        device = torch.device("cpu")
     print(f"Bruger device: {device}")
 
     num_classes = full_dataset.num_classes
@@ -194,70 +255,55 @@ def train(cfg: DictConfig):
     os.makedirs(out_dir, exist_ok=True)
     best_model_path = os.path.join(out_dir, "best_emotion_model.pt")
 
-    best_val_acc = 0.0
+    best_val_acc = float("-inf")
     early_stop_count = 0
 
     history = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": []}
 
-    with mlflow.start_run():
-        mlflow.set_tags(
-            {
-                "git.commit": os.getenv("GIT_COMMIT", ""),
-                "git.branch": os.getenv("GIT_BRANCH", ""),
-                "jenkins.job": os.getenv("JOB_NAME", ""),
-                "jenkins.build_number": os.getenv("BUILD_NUMBER", ""),
-                "jenkins.build_url": os.getenv("BUILD_URL", ""),
-                "data.version": os.getenv("DATA_VERSION", ""),
-                "docker_image": f"{os.getenv('REGISTRY_URL', '')}/rasmil112:{os.getenv('GIT_COMMIT', '')[:7]}",
-                
-            }
-            
-        )
+    run_context = mlflow.start_run() if is_rank_zero else nullcontext()
+    with run_context:
+        if is_rank_zero:
+            mlflow.set_tags(
+                {
+                    "git.commit": os.getenv("GIT_COMMIT", ""),
+                    "git.branch": os.getenv("GIT_BRANCH", ""),
+                    "jenkins.job": os.getenv("JOB_NAME", ""),
+                    "jenkins.build_number": os.getenv("BUILD_NUMBER", ""),
+                    "jenkins.build_url": os.getenv("BUILD_URL", ""),
+                    "data.version": os.getenv("DATA_VERSION", ""),
+                    "docker_image": f"{os.getenv('REGISTRY_URL', '')}/rasmil112:{os.getenv('GIT_COMMIT', '')[:7]}",
+                    "distributed.world_size": world_size,
+                }
+            )
 
-        # write run ID to file so Jenkins can pass it to evaluate.py
-        run_id = mlflow.active_run().info.run_id
-        with open("outputs/fer_run/mlflow_run_id.txt", "w") as f:
-            f.write(run_id)
+            # write run ID to file so Jenkins can pass it to evaluate.py
+            run_id = mlflow.active_run().info.run_id
+            with open("outputs/fer_run/mlflow_run_id.txt", "w") as f:
+                f.write(run_id)
 
-            
-        mlflow.log_params(
-            {
-                "train_dir": DATA_PATH,
-                "img_size": cfg.script.img_size,
-                "batch_size": cfg.script.batch_size,
-                "epochs_max": cfg.script.epochs,
-                "dataset_mean": cfg.script.dataset_mean,
-                "dataset_std": cfg.script.dataset_std,
-            }
-        )
+            mlflow.log_params(
+                {
+                    "train_dir": DATA_PATH,
+                    "img_size": cfg.script.img_size,
+                    "batch_size_per_gpu": cfg.script.batch_size,
+                    "global_batch_size": cfg.script.batch_size * world_size,
+                    "epochs_max": cfg.script.epochs,
+                    "dataset_mean": cfg.script.dataset_mean,
+                    "dataset_std": cfg.script.dataset_std,
+                }
+            )
 
         # Fit model to training data
-        print("Starter træning...")
-
-        # Før epoch loop:
-        if tracker:
-            try:
-                tracker.epoch_start()
-            except Exception:
-                pass
-
-        # Efter epoch:
-        if tracker:
-            try:
-                tracker.epoch_end()
-            except Exception:
-                pass
-
-        # Efter loop:
-        if tracker:
-            try:
-                tracker.stop()
-            except Exception:
-                pass
+        if is_rank_zero:
+            print("Starter træning...")
 
         for epoch in range(cfg.script.epochs):
+            if train_sampler is not None:
+                train_sampler.set_epoch(epoch)
+
             # initiating carbontracker
-            tracker.epoch_start()
+            if is_rank_zero:
+                tracker.epoch_start()
 
             # --- Træning ---
             model_engine.train()
@@ -275,6 +321,15 @@ def train(cfg: DictConfig):
                 running_loss += loss.item() * labels.size(0)
                 correct += (logits.argmax(1) == labels).sum().item()
                 total += labels.size(0)
+
+            if torch.distributed.is_initialized():
+                train_stats = torch.tensor(
+                    [running_loss, correct, total], dtype=torch.float64, device=device
+                )
+                torch.distributed.all_reduce(
+                    train_stats, op=torch.distributed.ReduceOp.SUM
+                )
+                running_loss, correct, total = train_stats.tolist()
 
             train_loss = running_loss / total
             train_acc = correct / total
@@ -295,6 +350,17 @@ def train(cfg: DictConfig):
                     val_correct += (logits.argmax(1) == labels).sum().item()
                     val_total += labels.size(0)
 
+            if torch.distributed.is_initialized():
+                val_stats = torch.tensor(
+                    [val_loss_sum, val_correct, val_total],
+                    dtype=torch.float64,
+                    device=device,
+                )
+                torch.distributed.all_reduce(
+                    val_stats, op=torch.distributed.ReduceOp.SUM
+                )
+                val_loss_sum, val_correct, val_total = val_stats.tolist()
+
             val_loss = val_loss_sum / val_total
             val_acc = val_correct / val_total
 
@@ -303,42 +369,44 @@ def train(cfg: DictConfig):
             history["val_loss"].append(val_loss)
             history["val_acc"].append(val_acc)
 
-            print(
-                f"Epoch [{epoch+1}/{cfg.script.epochs}] "
-                f"Train Loss: {train_loss:.4f} Acc: {train_acc:.4f} | "
-                f"Val Loss: {val_loss:.4f} Acc: {val_acc:.4f}"
-            )
+            if is_rank_zero:
+                print(
+                    f"Epoch [{epoch+1}/{cfg.script.epochs}] "
+                    f"Train Loss: {train_loss:.4f} Acc: {train_acc:.4f} | "
+                    f"Val Loss: {val_loss:.4f} Acc: {val_acc:.4f}"
+                )
 
-            mlflow.log_metrics(
-                {
-                    "train_loss": train_loss,
-                    "train_acc": train_acc,
-                    "val_loss": val_loss,
-                    "val_acc": val_acc,
-                },
-                step=epoch,
-            )
-
-            try:
-                requests.post(
-                    "http://172.24.198.42:8000/metrics/training",
-                    json={
-                        "epoch": epoch + 1,
+                mlflow.log_metrics(
+                    {
                         "train_loss": train_loss,
                         "train_acc": train_acc,
                         "val_loss": val_loss,
                         "val_acc": val_acc,
                     },
-                    timeout=2,
+                    step=epoch,
                 )
-            except requests.RequestException:
-                pass
+
+                try:
+                    requests.post(
+                        "http://172.24.198.42:8000/metrics/training",
+                        json={
+                            "epoch": epoch + 1,
+                            "train_loss": train_loss,
+                            "train_acc": train_acc,
+                            "val_loss": val_loss,
+                            "val_acc": val_acc,
+                        },
+                        timeout=2,
+                    )
+                except requests.RequestException:
+                    pass
 
             # Find and save best model
             if val_acc > best_val_acc:
                 best_val_acc = val_acc
-                torch.save(model.state_dict(), best_model_path)
-                print(f"  → Ny bedste model gemt (val_acc={best_val_acc:.4f})")
+                if is_rank_zero:
+                    torch.save(model_engine.module.state_dict(), best_model_path)
+                    print(f"  → Ny bedste model gemt (val_acc={best_val_acc:.4f})")
 
             # Kontroller learning_rate dynamisk
             reduce_lr.step(val_loss)
@@ -350,31 +418,32 @@ def train(cfg: DictConfig):
             else:
                 early_stop_count += 1
                 if early_stop_count >= 10:
-                    print(f"Early stopping efter epoch {epoch+1}")
+                    if is_rank_zero:
+                        print(f"Early stopping efter epoch {epoch+1}")
                     break
 
-            tracker.epoch_end()
+            if is_rank_zero:
+                tracker.epoch_end()
 
-        tracker.stop()
+        if is_rank_zero:
+            tracker.stop()
 
         # Plots + best model + model registry in MLflow
         plot_path = os.path.join(out_dir, "training_results.png")
-        plot_training_history(history, plot_path)
+        if is_rank_zero:
+            plot_training_history(history, plot_path)
 
-        mlflow.log_artifact(plot_path, artifact_path="plots")
-        mlflow.log_artifact(best_model_path, artifact_path="checkpoints")
-        # Save weights for a short while
-        import copy
+            mlflow.log_artifact(plot_path, artifact_path="plots")
+            mlflow.log_artifact(best_model_path, artifact_path="checkpoints")
+            fresh_model = FERModel(num_classes)
+            fresh_model.load_state_dict(torch.load(best_model_path, map_location="cpu"))
+            fresh_model.eval()
 
-        fresh_model = copy.deepcopy(model)
-        fresh_model.load_state_dict(torch.load(best_model_path))
-        fresh_model = fresh_model.cpu()  # move to CPU
-
-        mlflow.pytorch.log_model(
-            fresh_model,
-            artifact_path="model",
-            registered_model_name="fer_emotion_model",
-        )
+            mlflow.pytorch.log_model(
+                fresh_model,
+                artifact_path="model",
+                registered_model_name="fer_emotion_model",
+            )
 
     # Resultater visualisering
 

@@ -71,7 +71,21 @@ parameters {
             }
         }
 
+        stage('Testing gpu workers') {
+            steps {
+                sh '''
+                    docker run --rm \
+                        --gpus all \
+                        mlops_project_tests:$BUILD_NUMBER \
+                        python -c 'import torch; print("cuda devices:", torch.cuda.device_count())'
 
+                    docker run --rm \
+                        --gpus all \
+                        mlops_project_tests:$BUILD_NUMBER \
+                        nvidia-smi
+                '''
+            }
+        }
 
 
         stage('Run Unit Tests (pytest)') {
@@ -79,6 +93,9 @@ parameters {
                 sh 'docker run --rm mlops_project_tests:$BUILD_NUMBER python -m pytest -q --cov=. --cov-report=term-missing'
             }
         }
+
+
+
 
         stage('Pull Data with DVC'){
             steps {
@@ -140,6 +157,7 @@ parameters {
             }
         }
 
+
         //stage('Detect Drift') {
         //    when { expression { return params.RUN_EVALUATION } }
         //    steps {
@@ -195,8 +213,8 @@ parameters {
             steps {
                 withCredentials([usernamePassword(
                     credentialsId: 'carlemil112-github',
-                    usernameVariable: 'GIT_USER',
-                    passwordVariable: 'GIT_TOKEN'
+                    usernameVariable: 'GIT_USER', //pragma: allowlist secret
+                    passwordVariable: 'GIT_TOKEN' //pragma: allowlist secret
                 )]) {
                     sh '''
                         git config user.email "chejsl23@student.aau.dk"
