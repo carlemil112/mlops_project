@@ -20,7 +20,7 @@ from omegaconf import DictConfig
 
 # to start training with deepspeed: deepspeed --num_gpus=2 train_pytorch.py
 # Watch VRAM while it runs with: watch -n 1 nvidia-smi
-# TODO import deepspeed
+import deepspeed
 import mlflow
 import mlflow.pytorch
 import sys
@@ -170,40 +170,26 @@ def train(cfg: DictConfig):
     num_classes = full_dataset.num_classes
     model = FERModel(num_classes).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=cfg.script.lr)
-    model_engine = model  # TODO remove this when turning back to deepspeed please!
-    scheduler_optimizer = optimizer  # TODO and this one
-
-    """
-    TODO GET THAT BITCH GOING YA HEERD? I mean, remove this comment stuff when you want to fix it
     model_engine, optimizer, _, _ = deepspeed.initialize(
         optimizer=optimizer,
         model=model,
         model_parameters=model.parameters(),
         config=cfg.deepspeed.config_path,
     )
-    """
+
+    # Boiler-plate for setup af model før læring (strategi)
     criterion = nn.CrossEntropyLoss()
-    """
-    # Control learning_rate dynamisk
-    reduce_lr = ReduceLROnPlateau(
-        model_engine.optimizer.optimizer,  #  TODO dont remember if this is correct lol. Might be only 1 optimizer? Or just model and not "model_engine"
-        mode="min",
-        factor=0.2,
-        patience=5,
-        min_lr=0.00001,
-    )
-    """
 
-    #  TODO Replace this block with one above for deepspeed
+    # Kontroller learning_rate dynamisk
     reduce_lr = ReduceLROnPlateau(
-        scheduler_optimizer,
+        model_engine.optimizer.optimizer,  # ← den indpakkede originale
         mode="min",
         factor=0.2,
         patience=5,
         min_lr=0.00001,
     )
 
-    # Output folder
+    # Output mappe
     out_dir = os.path.join("outputs", "fer_run")
     os.makedirs(out_dir, exist_ok=True)
     best_model_path = os.path.join(out_dir, "best_emotion_model.pt")
@@ -270,7 +256,7 @@ def train(cfg: DictConfig):
             # initiating carbontracker
             tracker.epoch_start()
 
-            # Training
+            # --- Træning ---
             model_engine.train()
             running_loss, correct, total = 0.0, 0, 0
 
@@ -280,11 +266,8 @@ def train(cfg: DictConfig):
 
                 logits = model_engine(images)
                 loss = criterion(logits, labels)
-                # model_engine.backward(loss)
-                # model_engine.step() TODO remove comments with deepspeed and remove below optimizer, loss and optimizer
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
+                model_engine.backward(loss)
+                model_engine.step()
 
                 running_loss += loss.item() * labels.size(0)
                 correct += (logits.argmax(1) == labels).sum().item()
