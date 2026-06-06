@@ -153,7 +153,7 @@ parameters {
         //    }
         //}
 
-        stage('Evaluate Model') {
+        stage('Post quantization of model') {
             when { expression { return params.RUN_EVALUATION } }
             steps {
                 sh '''
@@ -166,6 +166,24 @@ parameters {
                 '''
             }
         }
+
+
+        stage('Evaluate Model') {
+            when { expression { return params.RUN_EVALUATION } }
+            steps {
+                sh '''
+                    docker run --rm \
+                        -v "$PWD:/app" \
+                        -w /app \
+                        -e MLFLOW_TRACKING_URI="${MLFLOW_TRACKING_URI}" \
+                        mlops_project_tests:$BUILD_NUMBER \
+                        python inference.py
+                '''
+            }
+        }
+
+
+
 
         stage('Cleanup'){
             steps {
