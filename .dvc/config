@@ -3,6 +3,4 @@
 ['remote "minio"']
     url = s3://rasmil112
     endpointurl = http://172.24.198.42:9000
-    access_key_id = daki
-    secret_access_key = dakiminio
     use_ssl = false

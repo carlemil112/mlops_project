@@ -1,0 +1,13 @@
+# Config management for variables and parameter
+hydra-core==1.3.2
+omegaconf==2.3.0
+dvc
+pytest
+torch
+torchvision
+mlflow==2.14.3
+dvc-s3
+matplotlib==3.10.7
+numpy
+opencv_python==4.12.0.88
+tensorflow==2.20.0

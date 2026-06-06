@@ -1,0 +1,5 @@
+# Shared dataloader stuff
+val_batch_size: 1
+train_shuffle: true
+val_shuffle: false
+num_workers: 16

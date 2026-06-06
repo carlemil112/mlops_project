@@ -1,0 +1,4 @@
+data_path: "data/FER-2013/train_balanced"
+test_data_path: "data/FER-2013/test"
+checkpoint_path: "checkpoint/random_unet.tar"
+output_path: "test_output_images"

@@ -26,5 +26,6 @@ FER-2013
 
 # DVC
 .dvc/cache
+.dvc/config.local
 /data
 .dvc/tmp/
