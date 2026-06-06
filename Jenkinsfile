@@ -80,6 +80,9 @@ parameters {
             }
         }
 
+
+
+
         stage('Pull Data with DVC'){
             steps {
                 withCredentials([usernamePassword(
@@ -138,6 +141,17 @@ parameters {
                     archiveArtifacts artifacts: 'outputs/**', fingerprint: true, allowEmptyArchive: true
                 }
             }
+        }
+
+        stage('Testing gpu workers') {
+            steps{
+                sh'''
+                python -c "import torch; print('cuda devices:', torch.cuda.device_count())"
+                nvidia-smi
+            }
+
+
+
         }
 
         //stage('Detect Drift') {
