@@ -73,14 +73,13 @@ parameters {
 
         stage('Testing gpu workers') {
             steps {
-                sh'''
-                docker run -rm python -c "import torch; print('cuda devices:', torch.cuda.device_count())" \
-                nvidia-smi
+                sh '''
+                    docker run --rm \
+                        --gpus all \
+                        mlops_project_tests:$BUILD_NUMBER \
+                        bash -lc 'python -c "import torch; print(\"cuda devices:\", torch.cuda.device_count())" && nvidia-smi'
                 '''
             }
-
-
-
         }
 
 
