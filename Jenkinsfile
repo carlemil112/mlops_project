@@ -124,7 +124,7 @@ parameters {
                         -e BUILD_NUMBER="${BUILD_NUMBER}" \
                         -e BUILD_URL="${BUILD_URL}" \
                         mlops_project_tests:$BUILD_NUMBER \
-                        python train.py
+                        deepspeed --num_gpus=1 train.py
 
 
 

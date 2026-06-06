@@ -4,3 +4,4 @@ data/
 monitoring/
 .ruff_cache/
 .pytest_cache/
+MNIST_task/
