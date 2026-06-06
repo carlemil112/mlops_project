@@ -17,13 +17,6 @@ parameters {
 
     stages {
 
-        stage('Debug') {
-            steps {
-                sh 'echo "GIT_BRANCH=${GIT_BRANCH}"'
-                sh 'echo "BRANCH_NAME=${BRANCH_NAME}"'
-            }
-        }
-
 
         stage('Clean Workspace') {
             steps {
@@ -193,8 +186,10 @@ parameters {
 
         stage('Merge to Main') {
             when {
-                expression { 
-                    return (env.GIT_BRANCH == 'development' || env.GIT_BRANCH == 'origin/development') &&
+                expression {
+                    def branch = sh(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
+                    echo "Current branch: ${branch}"
+                    return (branch == 'development') &&
                         (currentBuild.result == null || currentBuild.result == 'SUCCESS')
                 }
             }
