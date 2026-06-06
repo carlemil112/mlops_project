@@ -71,7 +71,17 @@ parameters {
             }
         }
 
+        stage('Testing gpu workers') {
+            steps {
+                sh'''
+                python -c "import torch; print('cuda devices:', torch.cuda.device_count())"
+                nvidia-smi
+                '''
+            }
 
+
+
+        }
 
 
         stage('Run Unit Tests (pytest)') {
@@ -143,17 +153,6 @@ parameters {
             }
         }
 
-        stage('Testing gpu workers') {
-            steps {
-                sh'''
-                python -c "import torch; print('cuda devices:', torch.cuda.device_count())"
-                nvidia-smi
-                '''
-            }
-
-
-
-        }
 
         //stage('Detect Drift') {
         //    when { expression { return params.RUN_EVALUATION } }
