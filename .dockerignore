@@ -1,3 +1,6 @@
 .venv.
 .dvc/cache/
 data/
+monitoring/
+.ruff_cache/
+.pytest_cache/
