@@ -67,6 +67,8 @@ def main():
         else 0
     )
 
+    # Just smoketest
+
     metadata = {
         "quantization_type": "dynamic",
         "framework": "pytorch",
