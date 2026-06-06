@@ -18,6 +18,14 @@ parameters {
     stages {
 
 
+        stage('Debug') {
+            steps {
+                sh 'echo "GIT_BRANCH=${GIT_BRANCH}"'
+                sh 'echo "BRANCH_NAME=${BRANCH_NAME}"'
+                sh 'git name-rev --name-only HEAD'
+            }
+        }
+
         stage('Clean Workspace') {
             steps {
                 cleanWs()
