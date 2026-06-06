@@ -71,7 +71,21 @@ parameters {
             }
         }
 
+        stage('Testing gpu workers') {
+            steps {
+                sh '''
+                    docker run --rm \
+                        --gpus all \
+                        mlops_project_tests:$BUILD_NUMBER \
+                        python -c 'import torch; print("cuda devices:", torch.cuda.device_count())'
 
+                    docker run --rm \
+                        --gpus all \
+                        mlops_project_tests:$BUILD_NUMBER \
+                        nvidia-smi
+                '''
+            }
+        }
 
 
         stage('Run Unit Tests (pytest)') {
@@ -79,6 +93,9 @@ parameters {
                 sh 'docker run --rm mlops_project_tests:$BUILD_NUMBER python -m pytest -q --cov=. --cov-report=term-missing'
             }
         }
+
+
+
 
         stage('Pull Data with DVC'){
             steps {
@@ -139,6 +156,7 @@ parameters {
                 }
             }
         }
+
 
         //stage('Detect Drift') {
         //    when { expression { return params.RUN_EVALUATION } }
