@@ -1,85 +1,100 @@
-import torch
-import torch.onnx as torch_onnx
-import subprocess
-import sys
+import json
 import os
-import shutil
-import tensorflow as tf
+
+import torch
+from torch.ao.quantization import quantize_dynamic
 
 from model.fer_model import FERModel
 
-MODEL_PATH = "outputs/fer_run/best_emotion_model.pt"
-ONNX_PATH = "emotion_model.onnx"
-ONNX2TF_OUTPUT_DIR = "onnx2tf_output"
-TFLITE_PATH = "emotion_model_quantized.tflite"
-NUM_CLASSES = 7
+
+INPUT_MODEL_PATH = "outputs/fer_run/best_emotion_model.pt"
+OUTPUT_DIR = "outputs/fer_run"
+QUANTIZED_MODEL_PATH = os.path.join(
+    OUTPUT_DIR, "best_emotion_model_dynamic_quantized.pt"
+)
+METADATA_PATH = os.path.join(OUTPUT_DIR, "quantization_metadata.json")
 IMG_SIZE = 48
 
 
-def export_to_onnx(model):
-    dummy_input = torch.zeros((1, 1, IMG_SIZE, IMG_SIZE))
-    torch_onnx.export(
+def infer_num_classes(state_dict):
+    classifier_weight = state_dict["classifier.5.weight"]
+    return classifier_weight.shape[0]
+
+
+def file_size_kb(path):
+    return os.path.getsize(path) / 1024
+
+
+def load_model():
+    state_dict = torch.load(INPUT_MODEL_PATH, map_location="cpu")
+    num_classes = infer_num_classes(state_dict)
+
+    model = FERModel(num_classes=num_classes)
+    model.load_state_dict(state_dict)
+    model.eval()
+    return model, num_classes
+
+
+def quantize_model(model):
+    return quantize_dynamic(
         model,
-        dummy_input,
-        ONNX_PATH,
-        input_names=["input"],
-        output_names=["output"],
-        dynamic_axes={"input": {0: "batch_size"}, "output": {0: "batch_size"}},
-        opset_version=11,
+        {torch.nn.Linear},
+        dtype=torch.qint8,
     )
-    print(f"Exported ONNX model to {ONNX_PATH}", flush=True)
 
 
-def onnx_to_saved_model():
-    # onnx2tf converts ONNX to a TensorFlow SavedModel directory.
-    if os.path.exists(ONNX2TF_OUTPUT_DIR):
-        shutil.rmtree(ONNX2TF_OUTPUT_DIR)
+def smoke_test(model):
+    dummy_input = torch.zeros((1, 1, IMG_SIZE, IMG_SIZE))
+    with torch.no_grad():
+        output = model(dummy_input)
+    return list(output.shape)
 
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "onnx2tf",
-            "-i",
-            ONNX_PATH,
-            "-o",
-            ONNX2TF_OUTPUT_DIR,
-            "--non_verbose",
-        ],
-        capture_output=True,
-        text=True,
+
+def main():
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+    model, num_classes = load_model()
+    quantized_model = quantize_model(model)
+    output_shape = smoke_test(quantized_model)
+
+    torch.save(quantized_model, QUANTIZED_MODEL_PATH)
+
+    original_size_kb = file_size_kb(INPUT_MODEL_PATH)
+    quantized_size_kb = file_size_kb(QUANTIZED_MODEL_PATH)
+    size_reduction_percent = (
+        (original_size_kb - quantized_size_kb) / original_size_kb * 100
+        if original_size_kb > 0
+        else 0
     )
-    if result.returncode != 0:
-        print(result.stderr, flush=True)
-        raise RuntimeError(f"onnx2tf failed with exit code {result.returncode}")
 
-    print(result.stdout, flush=True)
+    metadata = {
+        "quantization_type": "dynamic",
+        "framework": "pytorch",
+        "quantized_layers": ["torch.nn.Linear"],
+        "dtype": "qint8",
+        "input_model_path": INPUT_MODEL_PATH,
+        "quantized_model_path": QUANTIZED_MODEL_PATH,
+        "num_classes": num_classes,
+        "smoke_test_output_shape": output_shape,
+        "original_size_kb": round(original_size_kb, 2),
+        "quantized_size_kb": round(quantized_size_kb, 2),
+        "size_reduction_percent": round(size_reduction_percent, 2),
+    }
 
-    saved_model_path = os.path.join(ONNX2TF_OUTPUT_DIR, "saved_model.pb")
-    if not os.path.exists(saved_model_path):
-        raise FileNotFoundError(f"Expected TensorFlow SavedModel at {saved_model_path}")
+    with open(METADATA_PATH, "w") as file:
+        json.dump(metadata, file, indent=2)
 
-
-def quantize_saved_model_to_tflite():
-    # Dynamic-range post-training quantization. This does not need calibration data.
-    converter = tf.lite.TFLiteConverter.from_saved_model(ONNX2TF_OUTPUT_DIR)
-    converter.optimizations = [tf.lite.Optimize.DEFAULT]
-    tflite_model = converter.convert()
-
-    with open(TFLITE_PATH, "wb") as file:
-        file.write(tflite_model)
-
-    size_kb = os.path.getsize(TFLITE_PATH) / 1024
+    print(f"Loaded model: {INPUT_MODEL_PATH}", flush=True)
+    print(f"Quantized model saved to: {QUANTIZED_MODEL_PATH}", flush=True)
+    print(f"Metadata saved to: {METADATA_PATH}", flush=True)
     print(
-        f"Quantized TFLite model saved to {TFLITE_PATH} ({size_kb:.1f} KB)", flush=True
+        "Model size: "
+        f"{original_size_kb:.1f} KB -> {quantized_size_kb:.1f} KB "
+        f"({size_reduction_percent:.1f}% smaller)",
+        flush=True,
     )
+    print(f"Smoke test output shape: {output_shape}", flush=True)
 
 
 if __name__ == "__main__":
-    model = FERModel(NUM_CLASSES)
-    model.load_state_dict(torch.load(MODEL_PATH, map_location="cpu"))
-    model.eval()
-
-    export_to_onnx(model)
-    onnx_to_saved_model()
-    quantize_saved_model_to_tflite()
+    main()
