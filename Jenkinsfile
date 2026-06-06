@@ -184,9 +184,9 @@ parameters {
 
         stage('Merge to Main') {
             when {
-                allOf {
-                    branch 'development'
-                    expression { currentBuild.result == null || currentBuild.result == 'SUCCESS' }
+                expression { 
+                    return (env.GIT_BRANCH == 'development' || env.GIT_BRANCH == 'origin/development') &&
+                        (currentBuild.result == null || currentBuild.result == 'SUCCESS')
                 }
             }
             steps {
