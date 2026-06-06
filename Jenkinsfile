@@ -124,7 +124,7 @@ parameters {
                         -e BUILD_NUMBER="${BUILD_NUMBER}" \
                         -e BUILD_URL="${BUILD_URL}" \
                         mlops_project_tests:$BUILD_NUMBER \
-                        deepspeed --num_gpus=1 train.py
+                        python train.py
 
 
 
@@ -195,8 +195,8 @@ parameters {
             steps {
                 withCredentials([usernamePassword(
                     credentialsId: 'carlemil112-github',
-                    usernameVariable: 'GIT_USER',
-                    passwordVariable: 'GIT_TOKEN'
+                    usernameVariable: 'GIT_USER', //pragma: allowlist secret
+                    passwordVariable: 'GIT_TOKEN' //pragma: allowlist secret
                 )]) {
                     sh '''
                         git config user.email "chejsl23@student.aau.dk"
