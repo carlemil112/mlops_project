@@ -203,7 +203,7 @@ parameters {
                         git config user.name "carlemil112"
                         git remote set-url origin https://$GIT_USER:$GIT_TOKEN@github.com/carlemil112/mlops_project.git
                         git checkout main
-                        git merge development --no-ff -m "Auto-merge from Jenkins build $BUILD_NUMBER"
+                        git merge origin/development --no-ff -m "Auto-merge from Jenkins build $BUILD_NUMBER"
                         git push origin main
                     '''
                 }
