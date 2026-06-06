@@ -16,6 +16,15 @@ parameters {
 
 
     stages {
+
+        stage('Debug') {
+            steps {
+                sh 'echo "GIT_BRANCH=${GIT_BRANCH}"'
+                sh 'echo "BRANCH_NAME=${BRANCH_NAME}"'
+            }
+        }
+
+
         stage('Clean Workspace') {
             steps {
                 cleanWs()
