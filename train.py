@@ -168,13 +168,13 @@ def train(cfg: DictConfig):
     print(f"Bruger device: {device}")
 
     num_classes = full_dataset.num_classes
-    model_engine = FERModel(num_classes).to(
-        device
-    )  # TODO Change name back to "model" with deepspeed
-    optimizer = torch.optim.Adam(model_engine.parameters(), lr=cfg.script.lr)
+    model = FERModel(num_classes).to(device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=cfg.script.lr)
+    model_engine = model  # TODO remove this when turning back to deepspeed please!
+    scheduler_optimizer = optimizer  # TODO and this one
 
     """
-    TODO Remove again
+    TODO GET THAT BITCH GOING YA HEERD? I mean, remove this comment stuff when you want to fix it
     model_engine, optimizer, _, _ = deepspeed.initialize(
         optimizer=optimizer,
         model=model,
@@ -183,10 +183,20 @@ def train(cfg: DictConfig):
     )
     """
     criterion = nn.CrossEntropyLoss()
-
+    """
     # Control learning_rate dynamisk
     reduce_lr = ReduceLROnPlateau(
-        optimizer,  #  TODO Change back name to "model" with deepspeed pls
+        model_engine.optimizer.optimizer,  #  TODO dont remember if this is correct lol. Might be only 1 optimizer? Or just model and not "model_engine"
+        mode="min",
+        factor=0.2,
+        patience=5,
+        min_lr=0.00001,
+    )
+    """
+
+    #  TODO Replace this block with one above for deepspeed
+    reduce_lr = ReduceLROnPlateau(
+        scheduler_optimizer,
         mode="min",
         factor=0.2,
         patience=5,
@@ -270,8 +280,11 @@ def train(cfg: DictConfig):
 
                 logits = model_engine(images)
                 loss = criterion(logits, labels)
-                model_engine.backward(loss)
-                model_engine.step()
+                # model_engine.backward(loss)
+                # model_engine.step() TODO remove comments with deepspeed and remove below optimizer, loss and optimizer
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
 
                 running_loss += loss.item() * labels.size(0)
                 correct += (logits.argmax(1) == labels).sum().item()
@@ -338,9 +351,7 @@ def train(cfg: DictConfig):
             # Find and save best model
             if val_acc > best_val_acc:
                 best_val_acc = val_acc
-                torch.save(
-                    model_engine.state_dict(), best_model_path
-                )  # TODO Change back to "model" with deepspeed pls
+                torch.save(model.state_dict(), best_model_path)
                 print(f"  → Ny bedste model gemt (val_acc={best_val_acc:.4f})")
 
             # Kontroller learning_rate dynamisk
@@ -369,9 +380,7 @@ def train(cfg: DictConfig):
         # Save weights for a short while
         import copy
 
-        fresh_model = copy.deepcopy(
-            model_engine
-        )  # TODO Change back to "model" with deepspeed
+        fresh_model = copy.deepcopy(model)
         fresh_model.load_state_dict(torch.load(best_model_path))
         fresh_model = fresh_model.cpu()  # move to CPU
 
