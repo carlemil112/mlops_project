@@ -28,3 +28,4 @@ data/
 .dvc/cache
 .dvc/config.local
 /data
+.dvc/tmp/
