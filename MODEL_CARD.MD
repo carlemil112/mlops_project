@@ -13,7 +13,7 @@ datasets:
 metrics:
   - accuracy
 co2_eq_emissions:
-  emissions: TBD - vi må lige se om vi kan få det målt
+  emissions: TBA
   source: CarbonTracker
   training_type: pre-training
   geographic_location: Denmark
