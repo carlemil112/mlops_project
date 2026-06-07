@@ -1,7 +1,7 @@
 ---
 language:
   - en
-license: mit
+license: none
 library_name: pytorch
 pipeline_tag: image-classification
 tags:
